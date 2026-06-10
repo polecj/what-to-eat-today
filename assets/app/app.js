@@ -941,6 +941,22 @@ function backupBeforeImport() {
 }
 
 function parseImportData(text) {
+    const trimmed = text.trim();
+
+    // 新格式：每行一个项目（不以 { 开头）
+    if (!trimmed.startsWith('{')) {
+        const importedItems = trimmed.split('\n').map(line => line.trim()).filter(Boolean);
+        if (importedItems.length === 0) throw new Error('导入的列表为空');
+        const seen = {};
+        const importedOrder = [];
+        importedItems.forEach(item => {
+            const cat = getItemCategory(item);
+            if (!seen[cat]) { seen[cat] = true; importedOrder.push(cat); }
+        });
+        return { items: importedItems, categoryOrder: importedOrder };
+    }
+
+    // 旧 JSON 格式（兼容）
     const parsed = JSON.parse(text);
     const rawItems = Array.isArray(parsed) ? parsed : parsed?.items;
     if (!Array.isArray(rawItems)) throw new Error('导入文件里没有待抽列表');
@@ -1056,8 +1072,8 @@ function fromBase64(base64) {
     return new TextDecoder().decode(bytes);
 }
 
-function encodeShareCode(jsonText) {
-    return 'WTE:' + toBase64(jsonText);
+function encodeShareCode(plainText) {
+    return 'WTE:' + toBase64(plainText);
 }
 
 function decodeShareCode(code) {
@@ -1073,7 +1089,7 @@ function decodeShareCode(code) {
 }
 
 function openShareCodeView() {
-    var code = encodeShareCode(JSON.stringify({ items: items, categoryOrder: categoryOrder }));
+    var code = encodeShareCode(items.join('\n'));
     var textarea = document.getElementById('shareCodeViewTextarea');
     textarea.value = code;
     document.getElementById('shareCodeViewOverlay').classList.add('show');
