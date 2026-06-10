@@ -2554,10 +2554,66 @@ li.editing .item-drag-handle {
     .container {
         flex-direction: column;
         gap: 16px;
+        overflow: visible;
     }
 
     .left-panel {
         flex: 0 0 auto;
+    }
+
+    body.teaching-mode .container {
+        align-items: stretch;
+        gap: 12px;
+    }
+
+    body.teaching-mode .left-panel,
+    body.teaching-mode .right-panel {
+        width: 100%;
+        max-width: none;
+        padding-top: 0;
+    }
+
+    body.teaching-mode .right-panel {
+        flex: 0 0 auto;
+        height: auto;
+        min-height: 360px;
+    }
+
+    body.teaching-mode .right-panel .list-body {
+        max-height: 52vh;
+    }
+
+    .row {
+        flex-direction: column;
+        gap: 10px;
+        margin-top: 30px;
+    }
+
+    .format-help {
+        left: 0;
+        top: -32px;
+    }
+
+    .new-user-guide {
+        right: 0;
+        top: -34px;
+    }
+
+    .never-show-guide {
+        right: 78px;
+        top: -32px;
+    }
+
+    body.guide-attention .new-user-guide::before {
+        right: 0;
+        left: auto;
+        transform: none;
+    }
+
+    body.guide-attention .new-user-guide::after {
+        right: 24px;
+        left: auto;
+        transform: none;
     }
 
     .right-panel {
