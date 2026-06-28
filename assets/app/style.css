@@ -315,6 +315,12 @@ body.teaching-mode .teaching-panel {
     background: rgba(212, 160, 23, 0.12);
 }
 
+.item-more-btn.teaching-highlight {
+    color: #f6d266 !important;
+    box-shadow: 0 0 0 3px rgba(246, 210, 102, 0.4), 0 0 14px rgba(212, 160, 23, 0.5);
+    border-radius: 3px;
+}
+
 @keyframes teaching-glow {
     from {
         border-color: rgba(246, 210, 102, 0.62);
@@ -921,6 +927,239 @@ body.teaching-mode .right-panel {
     background: transparent;
 }
 
+/* 抽取统计 */
+.stats-overlay {
+    position: fixed;
+    inset: 0;
+    display: none;
+    place-items: center;
+    background: rgba(5, 5, 12, 0.5);
+    z-index: 70;
+}
+
+.stats-overlay.show {
+    display: grid;
+}
+
+.stats-card {
+    width: min(640px, 90vw);
+    max-height: 88vh;
+    padding: 0;
+    border-radius: 18px;
+    background: rgba(22, 33, 62, 0.97);
+    border: 1px solid #3a4a75;
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
+    color: #ddd;
+    overflow: hidden;
+}
+
+.stats-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 24px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.stats-header h2 {
+    color: #fff;
+    font-size: 20px;
+    margin: 0;
+}
+
+.stats-toggles {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.stats-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 13px;
+    color: #bbb;
+    cursor: pointer;
+}
+
+.stats-check input {
+    accent-color: #4a90d9;
+}
+
+.stats-close-btn {
+    border: none;
+    background: transparent;
+    color: #aaa;
+    font-size: 22px;
+    cursor: pointer;
+    padding: 0 0 0 4px;
+}
+
+.stats-close-btn:hover {
+    color: #fff;
+}
+
+.stats-body {
+    padding: 24px;
+    min-height: 120px;
+}
+
+.stats-placeholder {
+    text-align: center;
+    color: #7a7a9a;
+    margin: 40px 0;
+}
+
+.stats-chart {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 62vh;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+
+.stats-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.stats-item-name {
+    flex: 0 0 130px;
+    width: 130px;
+    font-size: 13px;
+    color: #ddd;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.stats-bar-wrap {
+    flex: 1;
+    min-width: 40px;
+    height: 20px;
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.06);
+    position: relative;
+    overflow: hidden;
+}
+
+.stats-bar {
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    border-radius: 3px;
+    min-width: 2px;
+    transition: width 0.3s ease;
+}
+
+.stats-bar-pick {
+    background: linear-gradient(90deg, #4a90d9, #6c5ce7);
+    z-index: 1;
+}
+
+.stats-bar-eaten {
+    background: linear-gradient(90deg, #27ae60, #2ecc71);
+    z-index: 2;
+    opacity: 0.85;
+}
+
+.stats-item-count {
+    flex: 0 0 auto;
+    min-width: 28px;
+    text-align: right;
+    font-size: 13px;
+    color: #8f9bb3;
+    font-variant-numeric: tabular-nums;
+}
+
+.stats-item-eaten {
+    flex: 0 0 auto;
+    min-width: 28px;
+    text-align: right;
+    font-size: 13px;
+    color: #58d68d;
+    font-variant-numeric: tabular-nums;
+}
+
+/* 今天我吃了…… */
+.eaten-dialog-overlay {
+    position: fixed;
+    inset: 0;
+    display: none;
+    place-items: center;
+    background: rgba(5, 5, 12, 0.5);
+    z-index: 75;
+}
+
+.eaten-dialog-overlay.show {
+    display: grid;
+}
+
+.eaten-dialog-card {
+    width: min(360px, 86vw);
+    padding: 22px 24px;
+    border-radius: 16px;
+    background: rgba(22, 33, 62, 0.97);
+    border: 1px solid #3a4a75;
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
+    color: #ddd;
+}
+
+.eaten-dialog-card h3 {
+    margin: 0 0 14px;
+    color: #fff;
+    font-size: 18px;
+}
+
+.eaten-select-row {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+.eaten-select {
+    flex: 1;
+    padding: 7px 10px;
+    border-radius: 4px;
+    border: 1px solid #3a4a75;
+    background: rgba(17, 25, 54, 0.9);
+    color: #e0e0e0;
+    font-size: 14px;
+}
+
+.eaten-select:disabled {
+    opacity: 0.4;
+}
+
+.eaten-dialog-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+}
+
+.eaten-dialog-actions button {
+    padding: 6px 18px;
+    border-radius: 999px;
+    border: 1px solid #3a4a75;
+    background: transparent;
+    color: #ddd;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+.eaten-dialog-actions button:hover:not(:disabled) {
+    border-color: #777;
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.eaten-dialog-actions button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
 .row {
     display: flex;
     gap: 8px;
@@ -963,13 +1202,64 @@ body.teaching-mode .right-panel {
 }
 
 .category-input {
-    flex: 0 0 82px !important;
-    width: 82px;
+    flex: 0 0 62px !important;
+    width: 62px;
     min-width: 0;
-    max-width: 82px;
+    max-width: 62px;
     text-align: center;
     font-size: 14px;
-    padding: 8px 8px;
+    padding: 8px 0 8px 8px;
+}
+
+.category-dropdown-btn {
+    flex: 0 0 auto;
+    width: 22px;
+    height: 100%;
+    padding: 0;
+    margin: 0;
+    border: none;
+    background: transparent;
+    color: #777;
+    font-size: 14px;
+    cursor: pointer;
+    line-height: 1;
+}
+
+.category-dropdown-btn:hover {
+    color: #ddd;
+}
+
+.category-dropdown-menu {
+    position: absolute;
+    left: 0;
+    top: 100%;
+    margin-top: 2px;
+    min-width: 120px;
+    max-height: 180px;
+    overflow-y: auto;
+    padding: 4px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 4px;
+    background: rgba(22, 33, 62, 0.97);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+    z-index: 310;
+}
+
+.category-dropdown-menu button {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 5px 10px;
+    border: none;
+    background: transparent;
+    color: #ddd;
+    font-size: 13px;
+    border-radius: 3px;
+    cursor: pointer;
+}
+
+.category-dropdown-menu button:hover {
+    background: rgba(255, 255, 255, 0.08);
 }
 
 .name-input {
@@ -1262,6 +1552,21 @@ button.pick:hover {
     cursor: not-allowed;
 }
 
+.stats-btn-inline {
+    padding: 2px 10px;
+    border-radius: 999px;
+    background: rgba(74, 144, 217, 0.18);
+    border-color: rgba(74, 144, 217, 0.35);
+    color: #8fbbf0;
+    font-size: 12px;
+}
+
+.stats-btn-inline:hover {
+    background: rgba(74, 144, 217, 0.3);
+    border-color: rgba(74, 144, 217, 0.55);
+    color: #b8d6ff;
+}
+
 .draw-history-list {
     display: flex;
     flex-direction: column;
@@ -1362,6 +1667,7 @@ button.toggle-result {
     background: transparent;
     border-color: #444;
     color: #888;
+    margin-bottom: 6px;
 }
 
 button.toggle-result:hover {
@@ -2138,22 +2444,116 @@ button.pick:disabled {
     white-space: nowrap;
 }
 
-.draw-duration-input-wrap {
+.draw-duration-stepper {
     display: inline-flex;
     align-items: center;
-    gap: 3px;
+    gap: 6px;
     color: #8f9bb3;
 }
 
-.draw-duration-input-wrap input {
-    width: 42px;
-    padding: 3px 5px;
-    border-radius: 4px;
+.draw-duration-stepper button {
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border-radius: 999px;
     border: 1px solid rgba(255, 255, 255, 0.16);
     background: rgba(17, 25, 54, 0.9);
     color: #e0e0e0;
+    line-height: 1;
+}
+
+.draw-duration-stepper button:hover:not(:disabled) {
+    border-color: rgba(246, 210, 102, 0.5);
+    color: #f6d266;
+}
+
+.draw-duration-stepper button:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+.draw-duration-value {
+    min-width: 36px;
+    text-align: center;
+    color: #e0e0e0;
+    font-variant-numeric: tabular-nums;
+}
+
+/* 条目弹出操作菜单 */
+.item-popover {
+    position: fixed;
+    z-index: 310;
+    min-width: 144px;
+    padding: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 4px;
+    background: rgba(26, 32, 44, 0.94);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+    opacity: 0;
+    transform: translateY(-6px);
+    transition: opacity 0.12s ease, transform 0.12s ease;
+}
+
+.item-popover.show {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.item-popover-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 7px 12px;
     font-size: 13px;
-    text-align: right;
+    background: transparent;
+    border: none;
+    color: #e2e8f0;
+    border-radius: 3px;
+    cursor: pointer;
+}
+
+.item-popover-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.item-popover-label {
+    display: block;
+    padding: 6px 12px 2px;
+    font-size: 11px;
+    color: #7a7a9a;
+    text-transform: none;
+    pointer-events: none;
+}
+
+.weight-option .weight-dot {
+    width: 16px;
+    display: inline-block;
+    text-align: center;
+}
+
+.weight-option.active {
+    color: #f6d266;
+}
+
+.weight-option:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.item-popover-divider {
+    display: block;
+    height: 1px;
+    background: rgba(255, 255, 255, 0.1);
+    margin: 2px 0;
+}
+
+.item-popover-danger {
+    color: #e74c3c;
+}
+
+.item-popover-danger:hover {
+    background: rgba(231, 76, 60, 0.12);
 }
 
 .settings-menu .menu-item:hover {
@@ -2259,12 +2659,36 @@ body.tag-mode .right-panel.drawer-open .list-body {
     display: block;
 }
 
-.list-search {
-    width: 100%;
+.list-search-row {
+    display: flex;
+    gap: 6px;
     margin: 8px 0 10px;
+}
+
+.list-search {
+    flex: 1;
+    min-width: 0;
     padding: 6px 10px;
     font-size: 13px;
     border-radius: 999px;
+}
+
+.i-ate-btn {
+    flex: 0 0 auto;
+    padding: 6px 10px;
+    font-size: 12px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.05);
+    color: #aaa;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.i-ate-btn:hover {
+    color: #e0e0e0;
+    border-color: rgba(255, 255, 255, 0.25);
+    background: rgba(255, 255, 255, 0.08);
 }
 
 ul {
@@ -2524,10 +2948,9 @@ li .item-drag-handle {
     color: #4a4a6a;
 }
 
-li .del,
-li .edit,
 li .save,
-li .cancel {
+li .cancel,
+li .item-more-btn {
     background: none;
     border: none;
     font-size: 18px;
@@ -2537,12 +2960,14 @@ li .cancel {
     margin-left: 8px;
 }
 
-li .edit {
-    color: #4a90d9;
+li .item-more-btn {
+    color: #888;
+    font-size: 16px;
+    letter-spacing: 1px;
 }
 
-li .edit:hover {
-    color: #74b9ff;
+li .item-more-btn:hover {
+    color: #e0e0e0;
 }
 
 li .save {
@@ -2559,14 +2984,6 @@ li .cancel {
 
 li .cancel:hover {
     color: #ddd;
-}
-
-li .del {
-    color: #e74c3c;
-}
-
-li .del:hover {
-    color: #ff6b6b;
 }
 
 li .item-text {

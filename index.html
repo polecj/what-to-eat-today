@@ -42,6 +42,7 @@
                     <button id="newUserGuideBtn" class="new-user-guide" title="进入教学页面">教学💡</button>
                     <button id="neverShowGuideBtn" class="never-show-guide" title="以后不再显示新手教学提示">不再提示</button>
                     <input id="categoryInput" class="category-input" type="text" placeholder="空则无类别">
+                    <button id="categoryDropdownBtn" class="category-dropdown-btn" title="从已有类别中选择">▾</button>
                     <span class="input-separator"></span>
                     <input id="itemInput" class="name-input" type="text" placeholder="名称，回车添加" autofocus>
                 </div>
@@ -56,6 +57,7 @@
                 <div class="draw-history-header">
                     <strong>抽取历史</strong>
                     <span class="draw-history-actions">
+                        <button id="statsBtn" class="stats-btn-inline" title="抽取统计">统计</button>
                         <button id="toggleDrawHistoryBtn" class="toggle-history-btn">展开</button>
                         <button id="clearDrawHistoryBtn" class="clear-history-btn">全部删除</button>
                     </span>
@@ -97,10 +99,14 @@
                     <span class="settings-wrap menu-wrap">
                         <button class="settings-btn menu-btn" id="settingsBtn" title="列表设置">☰</button>
                         <span id="settingsMenu" class="settings-menu menu-dropdown">
-                            <label class="draw-duration-setting menu-control" title="普通模式抽取动画时长">
+                            <div class="draw-duration-setting menu-control" title="普通模式抽取动画时长">
                                 <span>抽取时间</span>
-                                <span class="draw-duration-input-wrap"><input id="drawDurationInput" type="text" inputmode="decimal" autocomplete="off"><span>s</span></span>
-                            </label>
+                                <span class="draw-duration-stepper">
+                                    <button id="drawDurationMinusBtn" type="button" aria-label="减少抽取时间">−</button>
+                                    <span id="drawDurationValue" class="draw-duration-value">2.5s</span>
+                                    <button id="drawDurationPlusBtn" type="button" aria-label="增加抽取时间">+</button>
+                                </span>
+                            </div>
                             <span class="menu-divider"></span>
                             <button class="bulk-menu-btn menu-item" id="bulkMenuBtn" title="批量编辑分类">批量编辑</button>
                             <span class="menu-divider"></span>
@@ -117,7 +123,10 @@
                 </span>
             </div>
             <div id="listBody" class="list-body">
-                <input id="listSearchInput" class="list-search" type="text" placeholder="搜索待抽项目">
+                <div class="list-search-row">
+                    <input id="listSearchInput" class="list-search" type="text" placeholder="搜索">
+                    <button id="iAteBtn" class="i-ate-btn" title="记录今天吃了什么">今天我吃了……</button>
+                </div>
                 <ul id="list"></ul>
             </div>
             <div class="list-footer">
@@ -238,9 +247,43 @@
         <div id="tagRevealCard" class="tag-reveal-card"></div>
     </div>
 
+    <div id="statsOverlay" class="stats-overlay">
+        <div class="stats-card">
+            <div class="stats-header">
+                <h2>抽取统计</h2>
+                <span class="stats-toggles">
+                    <label class="stats-check"><input id="statsTogglePick" type="checkbox" checked> 抽取</label>
+                    <label class="stats-check"><input id="statsToggleEaten" type="checkbox" checked> 就餐</label>
+                    <button id="statsCloseBtn" class="stats-close-btn" title="关闭">×</button>
+                </span>
+            </div>
+            <div class="stats-body">
+                <p class="stats-placeholder">统计内容即将上线</p>
+            </div>
+        </div>
+    </div>
+
+    <div id="eatenDialogOverlay" class="eaten-dialog-overlay">
+        <div class="eaten-dialog-card">
+            <h3>今天我吃了……</h3>
+            <div class="eaten-select-row">
+                <select id="eatenCategorySelect" class="eaten-select">
+                    <option value="">选择类别</option>
+                </select>
+                <select id="eatenItemSelect" class="eaten-select" disabled>
+                    <option value="">选择项目</option>
+                </select>
+            </div>
+            <div class="eaten-dialog-actions">
+                <button id="eatenConfirmBtn" disabled>确认</button>
+                <button id="eatenCancelBtn">取消</button>
+            </div>
+        </div>
+    </div>
+
     <div id="toast" class="toast"></div>
 
-    <div class="version-label">061102</div>
+    <div class="version-label">062307</div>
 
     <script src="assets/app/app.js"></script>
 

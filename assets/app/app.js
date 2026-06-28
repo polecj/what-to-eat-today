@@ -4,11 +4,18 @@ const COLLAPSED_CATEGORIES_KEY = 'picker_collapsed_categories';
 const UNCHECKED_CATEGORIES_KEY = 'picker_unchecked_categories';
 const DRAW_HISTORY_KEY = 'picker_draw_history';
 const PICK_COUNTS_KEY = 'picker_pick_counts';
+const EATEN_COUNTS_KEY = 'picker_eaten_counts';
 const GUIDE_PROMPT_DISABLED_KEY = 'picker_guide_prompt_disabled';
 const DRAW_DURATION_KEY = 'picker_draw_duration_seconds';
 const DRAW_DURATION_DEFAULT = 2.5;
-const DRAW_DURATION_MIN = 1;
+const DRAW_DURATION_MIN = 0.3;
 const DRAW_DURATION_MAX = 8;
+const DRAW_WEIGHTS_KEY = 'picker_draw_weights';
+const WEIGHT_OPTIONS = [
+    { value: 'less', label: '更少出现' },
+    { value: 'normal', label: '正常' },
+    { value: 'more', label: '更多出现' },
+];
 const UNCATEGORIZED = '未分类';
 
 // 从 localStorage 读取
@@ -103,9 +110,32 @@ function incrementPickCount(item) {
     render();
 }
 
+function loadEatenCounts() {
+    try {
+        var raw = localStorage.getItem(EATEN_COUNTS_KEY);
+        if (!raw) return {};
+        var parsed = JSON.parse(raw);
+        return (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed : {};
+    } catch { return {}; }
+}
+
+function saveEatenCounts(counts) {
+    if (isTeachingStorageActive()) return;
+    localStorage.setItem(EATEN_COUNTS_KEY, JSON.stringify(counts));
+}
+
+function incrementEatenCount(item) {
+    if (!item || isTeachingStorageActive()) return;
+    eatenCounts[item] = (eatenCounts[item] || 0) + 1;
+    saveEatenCounts(eatenCounts);
+    render();
+}
+
 function resetPickCounts() {
     pickCounts = {};
+    eatenCounts = {};
     savePickCounts(pickCounts);
+    saveEatenCounts(eatenCounts);
     render();
     if (currentMode === 'tags') renderTagBoard();
     showToast('统计数据已归零');
@@ -119,6 +149,37 @@ function setGuidePromptDisabled() {
     localStorage.setItem(GUIDE_PROMPT_DISABLED_KEY, '1');
 }
 
+function getWeightMultiplier(weight) {
+    if (weight === 'less') return 0.5;
+    if (weight === 'more') return 2;
+    return 1;
+}
+
+function loadDrawWeights() {
+    try {
+        const raw = localStorage.getItem(DRAW_WEIGHTS_KEY);
+        if (!raw) return {};
+        const parsed = JSON.parse(raw);
+        return (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed : {};
+    } catch { return {}; }
+}
+
+function saveDrawWeights(weights) {
+    if (isTeachingStorageActive()) return;
+    var cleaned = {};
+    var keys = Object.keys(weights);
+    for (var i = 0; i < keys.length; i++) {
+        var k = keys[i];
+        var v = weights[k];
+        if (v && v !== 'normal') cleaned[k] = v;
+    }
+    if (Object.keys(cleaned).length === 0) {
+        localStorage.removeItem(DRAW_WEIGHTS_KEY);
+    } else {
+        localStorage.setItem(DRAW_WEIGHTS_KEY, JSON.stringify(cleaned));
+    }
+}
+
 function loadDrawDurationSeconds() {
     const value = parseFloat(localStorage.getItem(DRAW_DURATION_KEY));
     if (!Number.isFinite(value)) return DRAW_DURATION_DEFAULT;
@@ -130,20 +191,19 @@ function saveDrawDurationSeconds(value) {
     localStorage.setItem(DRAW_DURATION_KEY, value.toFixed(1));
 }
 
-function normalizeDrawDurationInput(raw, fallback = drawDurationSeconds) {
-    const normalized = String(raw || '').replace(/[^\d.]/g, '');
-    const match = normalized.match(/^(\d*)(?:\.(\d?))?/);
-    let next = match ? `${match[1]}${match[2] !== undefined ? '.' + match[2] : ''}` : '';
-    if (next === '' || next === '.') return fallback;
-    let value = parseFloat(next);
-    if (!Number.isFinite(value)) value = fallback;
-    value = Math.min(DRAW_DURATION_MAX, Math.max(DRAW_DURATION_MIN, Math.round(value * 10) / 10));
-    return value;
+function setDrawDurationSeconds(value) {
+    drawDurationSeconds = Math.min(DRAW_DURATION_MAX, Math.max(DRAW_DURATION_MIN, Math.round(value * 10) / 10));
+    saveDrawDurationSeconds(drawDurationSeconds);
+    updateDrawDurationDisplay();
 }
 
-function updateDrawDurationInput() {
-    const input = document.getElementById('drawDurationInput');
-    if (input) input.value = drawDurationSeconds.toFixed(1);
+function updateDrawDurationDisplay() {
+    var valueEl = document.getElementById('drawDurationValue');
+    if (valueEl) valueEl.textContent = drawDurationSeconds.toFixed(1) + 's';
+    var minusBtn = document.getElementById('drawDurationMinusBtn');
+    if (minusBtn) minusBtn.disabled = drawDurationSeconds <= DRAW_DURATION_MIN;
+    var plusBtn = document.getElementById('drawDurationPlusBtn');
+    if (plusBtn) plusBtn.disabled = drawDurationSeconds >= DRAW_DURATION_MAX;
 }
 
 let items = loadItems();
@@ -173,7 +233,10 @@ let bulkEditCategory = '';
 let drawHistory = loadDrawHistory();
 let drawHistoryCollapsed = true;
 let pickCounts = loadPickCounts();
+let eatenCounts = loadEatenCounts();
 let drawDurationSeconds = loadDrawDurationSeconds();
+let drawWeights = loadDrawWeights();
+let activeItemPopoverIndex = -1;
 let categoriesToAnimate = new Set();
 let categoriesToHighlight = new Set();
 let itemsToHighlight = new Set();
@@ -318,6 +381,102 @@ function getDrawableItemIndexes() {
     return new Set(getDrawableItems().map(({ index }) => index));
 }
 
+function weightedDrawablePick() {
+    var drawable = getDrawableItems();
+    if (drawable.length === 0) return null;
+    var weights = drawable.map(function (d) { return getWeightMultiplier(drawWeights[d.item] || 'normal'); });
+    var totalWeight = weights.reduce(function (sum, w) { return sum + w; }, 0);
+    var r = Math.random() * totalWeight;
+    for (var i = 0; i < drawable.length; i++) {
+        r -= weights[i];
+        if (r <= 0) return drawable[i];
+    }
+    return drawable[drawable.length - 1];
+}
+
+var itemPopoverIndex = -1;
+
+function openItemPopover(index, buttonEl) {
+    itemPopoverIndex = index;
+    closeItemPopover(true);
+    var item = items[index];
+    var currentWeight = drawWeights[item] || 'normal';
+    var popover = document.createElement('div');
+    popover.className = 'item-popover';
+    popover.id = 'itemPopover';
+
+    var weightHtml = '';
+    for (var wi = 0; wi < WEIGHT_OPTIONS.length; wi++) {
+        var opt = WEIGHT_OPTIONS[wi];
+        var active = opt.value === currentWeight;
+        weightHtml += '<button class="item-popover-item weight-option' + (active ? ' active' : '') + '" data-weight="' + opt.value + '">'
+            + '<span class="weight-dot">' + (active ? '\u25cf' : '\u00b7') + '</span>'
+            + '<span>' + opt.label + '</span>'
+            + '</button>';
+    }
+
+    popover.innerHTML = '<button class="item-popover-item" data-action="edit">\u7f16\u8f91</button>'
+        + '<span class="item-popover-divider"></span>'
+        + '<span class="item-popover-label">\u62bd\u51fa\u6743\u91cd</span>'
+        + weightHtml
+        + '<span class="item-popover-divider"></span>'
+        + '<button class="item-popover-item item-popover-danger" data-action="delete">\u5220\u9664</button>';
+
+    document.body.appendChild(popover);
+
+    var btnRect = buttonEl.getBoundingClientRect();
+    var popoverRect = popover.getBoundingClientRect();
+    var popoverWidth = popoverRect.width || 144;
+    var popoverHeight = popoverRect.height || 140;
+    var left = Math.min(btnRect.right - popoverWidth, window.innerWidth - popoverWidth - 8);
+    var top = btnRect.bottom + 4;
+    if (top + popoverHeight > window.innerHeight - 8) {
+        top = btnRect.top - popoverHeight - 4;
+    }
+    popover.style.left = Math.max(8, left) + 'px';
+    popover.style.top = top + 'px';
+
+    popover.addEventListener('click', function (e) {
+        var actionBtn = e.target.closest('[data-action]');
+        var weightBtn = e.target.closest('[data-weight]');
+        if (actionBtn) {
+            var action = actionBtn.dataset.action;
+            if (action === 'edit') { closeItemPopover(); startEdit(index); return; }
+            if (action === 'delete') {
+                closeItemPopover();
+                items.splice(index, 1);
+                sortItems(false);
+                tagLayout = [];
+                suppressNextListAnimation = true;
+                render();
+                if (document.body.classList.contains('teaching-mode')) setTeachingStep(teachingStep);
+                if (currentMode === 'tags') renderTagBoard();
+                markListChanged();
+                return;
+            }
+        }
+        if (weightBtn) {
+            var w = weightBtn.dataset.weight;
+            var newWeights = {};
+            var wk = Object.keys(drawWeights);
+            for (var wi = 0; wi < wk.length; wi++) newWeights[wk[wi]] = drawWeights[wk[wi]];
+            if (w === 'normal') { delete newWeights[item]; } else { newWeights[item] = w; }
+            drawWeights = newWeights;
+            saveDrawWeights(drawWeights);
+            closeItemPopover();
+            render();
+        }
+    });
+
+    setTimeout(function () { popover.classList.add('show'); }, 0);
+}
+
+function closeItemPopover(skipState) {
+    var popover = document.getElementById('itemPopover');
+    if (popover) popover.remove();
+    if (!skipState) itemPopoverIndex = -1;
+}
+
 function addDrawHistory(item) {
     if (!item || isTeachingStorageActive()) return;
     clearUndoImportState();
@@ -336,6 +495,68 @@ function clearDrawHistory() {
     drawHistory = [];
     saveDrawHistory(drawHistory);
     renderDrawHistory();
+}
+
+var statsShowPick = true;
+var statsShowEaten = true;
+
+function renderStats() {
+    var body = document.querySelector('.stats-body');
+    if (!body) return;
+
+    if (items.length === 0) {
+        body.innerHTML = '<p class="stats-placeholder">还没有项目，先添加一些再来看统计吧</p>';
+        return;
+    }
+
+    var sorted = items.map(function (item, i) {
+        var displayName = getItemNameInCategory(item, getItemCategory(item));
+        return { name: displayName, pick: pickCounts[item] || 0, eaten: eatenCounts[item] || 0, index: i };
+    }).sort(function (a, b) { return b.pick - a.pick || a.name.localeCompare(b.name, 'zh-CN'); });
+
+    var maxVal = 1;
+    for (var i = 0; i < sorted.length; i++) {
+        var v = 0;
+        if (statsShowPick && sorted[i].pick > v) v = sorted[i].pick;
+        if (statsShowEaten && sorted[i].eaten > v) v = sorted[i].eaten;
+        if (v > maxVal) maxVal = v;
+    }
+
+    var html = '<div class="stats-chart">';
+    for (var i = 0; i < sorted.length; i++) {
+        var entry = sorted[i];
+        html += '<div class="stats-row">'
+            + '<span class="stats-item-name">' + escapeHtml(entry.name) + '</span>'
+            + '<span class="stats-bar-wrap">';
+
+        if (statsShowPick && statsShowEaten) {
+            var pickW = maxVal > 0 ? Math.max(2, Math.round(entry.pick / maxVal * 100)) : 0;
+            var eatenW = maxVal > 0 ? Math.max(2, Math.round(entry.eaten / maxVal * 100)) : 0;
+            if (entry.pick >= entry.eaten) {
+                html += '<span class="stats-bar stats-bar-pick" style="width:' + pickW + '%"></span>'
+                    + '<span class="stats-bar stats-bar-eaten" style="width:' + eatenW + '%"></span>';
+            } else {
+                html += '<span class="stats-bar stats-bar-eaten" style="width:' + eatenW + '%"></span>'
+                    + '<span class="stats-bar stats-bar-pick" style="width:' + pickW + '%"></span>';
+            }
+        } else if (statsShowPick) {
+            var pw = maxVal > 0 ? Math.max(2, Math.round(entry.pick / maxVal * 100)) : 0;
+            html += '<span class="stats-bar stats-bar-pick" style="width:' + pw + '%"></span>';
+        } else if (statsShowEaten) {
+            var ew = maxVal > 0 ? Math.max(2, Math.round(entry.eaten / maxVal * 100)) : 0;
+            html += '<span class="stats-bar stats-bar-eaten" style="width:' + ew + '%"></span>';
+        } else {
+            html += '<span class="stats-bar" style="width:0"></span>';
+        }
+
+        html += '</span>'
+            + '<span class="stats-item-count">' + (statsShowPick ? entry.pick : '') + '</span>'
+            + '<span class="stats-item-eaten">' + (statsShowEaten ? entry.eaten : '') + '</span>'
+            + '</div>';
+    }
+    html += '</div>';
+
+    body.innerHTML = html;
 }
 
 function renderDrawHistory() {
@@ -541,14 +762,6 @@ function toggleResult() {
         teachingConfirmDone = true;
         document.getElementById('teachingNextBtn')?.classList.add('teaching-highlight');
         updateTeachingNextState();
-    }
-    if (autoExpandedCategory) {
-        const category = autoExpandedCategory;
-        collapseCategoryWithAnimation(category, () => {
-            collapseCategory(category);
-            autoExpandedCategory = '';
-            render();
-        });
     }
 }
 
@@ -779,7 +992,8 @@ function drawRandomTag() {
         clearTagDrawHighlight();
         let picked;
         do {
-            picked = drawableItems[Math.floor(Math.random() * drawableItems.length)];
+            picked = weightedDrawablePick();
+            if (!picked) { picked = drawableItems[0]; break; }
         } while (picked.index === lastIndex && drawableItems.length > 1);
         lastIndex = picked.index;
 
@@ -1389,8 +1603,7 @@ ${collapsed ? '' : group.items.map(({ item, index }) => {
 <li class="item-row${skipItemAnimation ? ' no-enter-animation' : ''}${drawEnabled ? '' : ' draw-disabled'}${highlightItems.has(item) ? ' import-highlight' : ''}" draggable="true" data-index="${index}" data-category="${escapeAttribute(group.category)}">
   <span class="drag-handle item-drag-handle" title="拖动调整项目顺序">⠿</span>
   <span class="item-text">${escapeHtml(item)}<span class="pick-count">${formatPickCount(item)}</span></span>
-  ${currentMode === 'tags' ? '' : `<button class="edit" data-index="${index}" title="编辑">✎</button>
-  <button class="del" data-index="${index}" title="删除">✕</button>`}
+	  ${currentMode === 'tags' ? '' : `<button class="item-more-btn" data-index="${index}" title="更多操作">⋯</button>`}
 </li>
       `; }).join('')}
       `;
@@ -1427,29 +1640,13 @@ ${collapsed ? '' : group.items.map(({ item, index }) => {
         });
     });
 
-    // 绑定编辑事件
-    list.querySelectorAll('.edit').forEach(btn => {
+    // 绑定更多操作事件
+    list.querySelectorAll('.item-more-btn').forEach(btn => {
         btn.addEventListener('click', function (e) {
             e.stopPropagation();
-            startEdit(parseInt(this.dataset.index));
-        });
-    });
-
-    // 绑定删除事件
-    list.querySelectorAll('.del').forEach(btn => {
-        btn.addEventListener('click', function (e) {
-            e.stopPropagation();
-            const i = parseInt(this.dataset.index);
-            items.splice(i, 1);
-            sortItems(false);
-            tagLayout = [];
-            suppressNextListAnimation = true;
-            render();
-            if (document.body.classList.contains('teaching-mode')) {
-                setTeachingStep(teachingStep);
-            }
-            if (currentMode === 'tags') renderTagBoard();
-            markListChanged();
+            var idx = parseInt(this.dataset.index);
+            if (itemPopoverIndex === idx) { closeItemPopover(); return; }
+            openItemPopover(idx, this);
         });
     });
 
@@ -1462,8 +1659,12 @@ function getCategoryPickTotal(categoryItems) {
 
 function formatPickCount(item) {
     if (newItemsUntilNextDraw.has(item)) return '<span class="new-item-mark"> 新增</span>';
-    const count = pickCounts[item] || 0;
-    return count > 0 ? ` 抽中${count}次` : '';
+    var parts = [];
+    var pickCount = pickCounts[item] || 0;
+    var eatenCount = eatenCounts[item] || 0;
+    if (pickCount > 0) parts.push('抽中' + pickCount + '次');
+    if (eatenCount > 0) parts.push('吃过' + eatenCount + '次');
+    return parts.length > 0 ? ' ' + parts.join(' ') : '';
 }
 
 function escapeHtml(str) {
@@ -1830,19 +2031,15 @@ function pick() {
     pickBtn.textContent = '抽取中…';
     setResultBlur(0);
 
-    const collapsedPreviousAutoExpanded = collapseAutoExpandedCategory();
-    if (collapsedPreviousAutoExpanded) {
-        render();
-    }
-
-    // 候选框内不播放过程动画，只清除上次最终高亮
+    // 清除上次高亮
     document.querySelectorAll('li.highlight').forEach(el => el.classList.remove('highlight'));
 
     function doRoll() {
         // 尽量不和上一轮重复，增强滚动感
         let picked;
         do {
-            picked = drawableItems[Math.floor(Math.random() * drawableItems.length)];
+            picked = weightedDrawablePick();
+            if (!picked) { picked = drawableItems[0]; break; }
         } while (picked.index === lastIdx && drawableItems.length > 1);
 
         lastIdx = picked.index;
@@ -1860,15 +2057,18 @@ function pick() {
             incrementPickCount(items[lastIdx]);
             setTimeout(clearResultBlur, 120);
             const category = getItemCategory(items[lastIdx]);
-            if (expandCategory(category)) {
-                autoExpandedCategory = category;
-                categoriesToAnimate.add(category);
-                render();
-            }
-            const li = document.querySelector(`li.item-row[data-index="${lastIdx}"]`);
-            if (li) {
-                li.classList.add('highlight');
-                li.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            if (!isCategoryCollapsed(category)) {
+                const li = document.querySelector(`li.item-row[data-index="${lastIdx}"]`);
+                if (li) {
+                    li.classList.add('highlight');
+                    li.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                }
+            } else {
+                const catLi = document.querySelector(`li.category[data-category="${CSS.escape(category)}"]`);
+                if (catLi) {
+                    catLi.classList.add('highlight');
+                    catLi.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                }
             }
             pickBtn.disabled = false;
             pickBtn.textContent = '抽一个';
@@ -2247,10 +2447,10 @@ function setTeachingStep(step) {
     if (step === 11) {
         kicker.textContent = '11';
         title.textContent = '修改一个条目';
-        desc.innerHTML = '点击任意条目右侧的编辑图标，就可以修改名称或类别。你可以试着把 <strong>一食 兰州拉面</strong> 改成 <strong>一食 牛肉面</strong>，也可以直接下一步。';
+        desc.innerHTML = '点击任意条目右侧的 \u22ef 按钮，再选择编辑，就可以修改名称或类别。你可以试着把 <strong>一食 兰州拉面</strong> 改成 <strong>一食 牛肉面</strong>，也可以直接下一步。';
         nextBtn.textContent = '下一步';
         if (teachingStep === teachingLatestStep) {
-            findItemRowByName('一食 兰州拉面')?.querySelector('.edit')?.classList.add('teaching-highlight');
+            findItemRowByName('一食 兰州拉面')?.querySelector('.item-more-btn')?.classList.add('teaching-highlight');
         }
         updateTeachingNextState();
         return;
@@ -2272,10 +2472,10 @@ function setTeachingStep(step) {
         closeTeachingInlineEdit();
         kicker.textContent = '13';
         title.textContent = '删除一个条目';
-        desc.innerHTML = '点击 <strong>瑞幸咖啡</strong> 右侧的删除按钮，可以把它从待抽列表中移除。你可以试试看，也可以直接下一步。';
+        desc.innerHTML = '点击 <strong>瑞幸咖啡</strong> 右侧的 \u22ef 按钮，再选择删除，可以把它从待抽列表中移除。你可以试试看，也可以直接下一步。';
         nextBtn.textContent = '下一步';
         if (teachingStep === teachingLatestStep) {
-            findItemRowByName('瑞幸咖啡')?.querySelector('.del')?.classList.add('teaching-highlight');
+            findItemRowByName('瑞幸咖啡')?.querySelector('.item-more-btn')?.classList.add('teaching-highlight');
         }
         updateTeachingNextState();
         return;
@@ -2392,7 +2592,7 @@ function enterTeachingMode() {
     newItemsUntilNextDraw = new Set();
     listSearchQuery = '';
     hasUnsavedExport = false;
-    updateDrawDurationInput();
+    updateDrawDurationDisplay();
     switchMode('normal');
     document.body.classList.add('teaching-mode');
     document.getElementById('listSearchInput').value = '';
@@ -2469,6 +2669,8 @@ function setupCategoryNameNavigation(categoryInput, nameInput) {
         updateCategoryValidity(this);
         maybeMoveToName();
         updateTeachingNextState();
+        var dd = document.getElementById('categoryDropdownMenu');
+        if (dd) dd.remove();
     });
 
     nameInput.addEventListener('keydown', function (e) {
@@ -2549,6 +2751,31 @@ function enterWelcomePage() {
 
 // ===== 事件绑定 =====
 document.getElementById('addBtn').addEventListener('click', addItem);
+document.getElementById('categoryDropdownBtn').addEventListener('click', function (e) {
+    e.stopPropagation();
+    var existing = document.getElementById('categoryDropdownMenu');
+    if (existing) { existing.remove(); return; }
+    var groups = buildGroups();
+    if (groups.length === 0) return;
+    var menu = document.createElement('div');
+    menu.className = 'category-dropdown-menu';
+    menu.id = 'categoryDropdownMenu';
+    for (var i = 0; i < groups.length; i++) {
+        var cat = groups[i].category;
+        var btn = document.createElement('button');
+        btn.textContent = cat;
+        btn.addEventListener('click', function (c) {
+            return function () {
+                document.getElementById('categoryInput').value = c;
+                document.getElementById('categoryInput').focus();
+                document.getElementById('itemInput').focus();
+                menu.remove();
+            };
+        }(cat));
+        menu.appendChild(btn);
+    }
+    this.parentElement.appendChild(menu);
+});
 setupSplitInput('categoryInput', 'itemInput', addItem);
 document.getElementById('newUserGuideBtn').addEventListener('click', transitionToTeachingMode);
 document.getElementById('enterWelcomeBtn').addEventListener('click', enterWelcomePage);
@@ -2603,6 +2830,78 @@ document.getElementById('pickBtn').addEventListener('click', pick);
 document.getElementById('toggleResultBtn').addEventListener('click', toggleResult);
 document.getElementById('normalModeBtn').addEventListener('click', () => switchMode('normal'));
 document.getElementById('tagModeBtn').addEventListener('click', () => switchMode('tags'));
+document.getElementById('statsBtn').addEventListener('click', function () {
+    if (document.body.classList.contains('teaching-mode')) return;
+    renderStats();
+    document.getElementById('statsOverlay').classList.add('show');
+});
+document.getElementById('statsCloseBtn').addEventListener('click', function () {
+    document.getElementById('statsOverlay').classList.remove('show');
+});
+document.getElementById('statsTogglePick').addEventListener('change', function () {
+    statsShowPick = this.checked;
+    renderStats();
+});
+document.getElementById('statsToggleEaten').addEventListener('change', function () {
+    statsShowEaten = this.checked;
+    renderStats();
+});
+document.getElementById('statsOverlay').addEventListener('click', function (e) {
+    if (e.target === this) this.classList.remove('show');
+});
+
+// 今天我吃了……
+document.getElementById('iAteBtn').addEventListener('click', function () {
+    if (document.body.classList.contains('teaching-mode')) return;
+    var catSelect = document.getElementById('eatenCategorySelect');
+    var itemSelect = document.getElementById('eatenItemSelect');
+    var confirmBtn = document.getElementById('eatenConfirmBtn');
+    var groups = buildGroups();
+    catSelect.innerHTML = '<option value="">选择类别</option>';
+    for (var i = 0; i < groups.length; i++) {
+        catSelect.innerHTML += '<option value="' + escapeAttribute(groups[i].category) + '">' + escapeHtml(groups[i].category) + '</option>';
+    }
+    itemSelect.innerHTML = '<option value="">选择项目</option>';
+    itemSelect.disabled = true;
+    confirmBtn.disabled = true;
+    document.getElementById('eatenDialogOverlay').classList.add('show');
+});
+
+document.getElementById('eatenCategorySelect').addEventListener('change', function () {
+    var cat = this.value;
+    var itemSelect = document.getElementById('eatenItemSelect');
+    var confirmBtn = document.getElementById('eatenConfirmBtn');
+    itemSelect.innerHTML = '<option value="">选择项目</option>';
+    if (!cat) { itemSelect.disabled = true; confirmBtn.disabled = true; return; }
+    var catItems = items.filter(function (item) { return getItemCategory(item) === cat; });
+    for (var i = 0; i < catItems.length; i++) {
+        var name = getItemNameInCategory(catItems[i], cat);
+        itemSelect.innerHTML += '<option value="' + escapeAttribute(catItems[i]) + '">' + escapeHtml(name) + '</option>';
+    }
+    itemSelect.disabled = false;
+    confirmBtn.disabled = true;
+});
+
+document.getElementById('eatenItemSelect').addEventListener('change', function () {
+    document.getElementById('eatenConfirmBtn').disabled = !this.value;
+});
+
+document.getElementById('eatenConfirmBtn').addEventListener('click', function () {
+    var item = document.getElementById('eatenItemSelect').value;
+    if (!item) return;
+    incrementEatenCount(item);
+    document.getElementById('eatenDialogOverlay').classList.remove('show');
+    showToast('已记录');
+});
+
+document.getElementById('eatenCancelBtn').addEventListener('click', function () {
+    document.getElementById('eatenDialogOverlay').classList.remove('show');
+});
+
+document.getElementById('eatenDialogOverlay').addEventListener('click', function (e) {
+    if (e.target === this) this.classList.remove('show');
+});
+
 document.getElementById('drawTagBtn').addEventListener('click', drawRandomTag);
 document.getElementById('toggleDrawHistoryBtn').addEventListener('click', toggleDrawHistory);
 document.getElementById('clearDrawHistoryBtn').addEventListener('click', clearDrawHistory);
@@ -2610,19 +2909,15 @@ document.getElementById('pauseTagsBtn').addEventListener('click', toggleTagPause
 document.getElementById('motionSpeedInput').addEventListener('input', function () {
     tagMotionSpeed = parseFloat(this.value) || 1;
 });
-document.getElementById('drawDurationInput').addEventListener('input', function () {
-    const cleaned = this.value
-        .replace(/[^\d.]/g, '')
-        .replace(/(\..*)\./g, '$1')
-        .replace(/^(\d*\.\d).+$/, '$1');
-    if (this.value !== cleaned) this.value = cleaned;
+document.getElementById('drawDurationMinusBtn').addEventListener('click', function (e) {
+    e.stopPropagation();
+    setDrawDurationSeconds(drawDurationSeconds - 0.1);
 });
-document.getElementById('drawDurationInput').addEventListener('change', function () {
-    drawDurationSeconds = normalizeDrawDurationInput(this.value);
-    saveDrawDurationSeconds(drawDurationSeconds);
-    updateDrawDurationInput();
+document.getElementById('drawDurationPlusBtn').addEventListener('click', function (e) {
+    e.stopPropagation();
+    setDrawDurationSeconds(drawDurationSeconds + 0.1);
 });
-updateDrawDurationInput();
+updateDrawDurationDisplay();
 document.getElementById('tagBoard').addEventListener('click', hideTagReveal);
 document.getElementById('tagRevealOverlay').addEventListener('click', hideTagReveal);
 document.getElementById('formatHelpBtn').addEventListener('click', function () {
@@ -2730,6 +3025,16 @@ document.addEventListener('click', function (e) {
         settingsMenu.classList.remove('open');
     }
 
+    var itemPopover = document.getElementById('itemPopover');
+    if (itemPopover && !e.target.closest('#itemPopover') && !e.target.closest('.item-more-btn')) {
+        closeItemPopover();
+    }
+
+    var catDropdown = document.getElementById('categoryDropdownMenu');
+    if (catDropdown && !e.target.closest('#categoryDropdownMenu') && !e.target.closest('#categoryDropdownBtn')) {
+        catDropdown.remove();
+    }
+
     const editingRow = document.querySelector('li.item-row.editing');
     if (editingRow && !e.target.closest('li.item-row.editing')) {
         if (ignoreNextEditOutsideClick) {
@@ -2757,10 +3062,7 @@ document.getElementById('listHeader').addEventListener('click', function (e) {
     }
     if (currentMode === 'tags') {
         document.querySelector('.right-panel').classList.toggle('drawer-open');
-        return;
     }
-    this.classList.toggle('collapsed');
-    document.getElementById('listBody').classList.toggle('collapsed');
 });
 
 document.getElementById('expandAllBtn').addEventListener('click', function (e) {
