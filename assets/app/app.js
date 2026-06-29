@@ -241,6 +241,8 @@ let categoriesToAnimate = new Set();
 let categoriesToHighlight = new Set();
 let itemsToHighlight = new Set();
 let newItemsUntilNextDraw = new Set();
+let pickedItemIndex = -1;
+let pickedCategory = '';
 let teachingItems = [];
 let teachingCategoryOrder = [];
 let savedMainState = null;
@@ -1554,9 +1556,13 @@ function render() {
     const animateCategories = new Set(categoriesToAnimate);
     const highlightCategories = new Set(categoriesToHighlight);
     const highlightItems = new Set(itemsToHighlight);
+    const highlightPickedItem = pickedItemIndex;
+    const highlightPickedCat = pickedCategory;
     categoriesToAnimate.clear();
     categoriesToHighlight.clear();
     itemsToHighlight.clear();
+    pickedItemIndex = -1;
+    pickedCategory = '';
     suppressNextListAnimation = false;
     count.textContent = `共 ${items.length} 项`;
 
@@ -1586,7 +1592,7 @@ function render() {
         const collapsed = isCategoryCollapsed(group.category);
         const drawEnabled = isCategoryDrawEnabled(group.category);
         return `
-<li class="category${collapsed ? ' collapsed' : ''}${drawEnabled ? '' : ' draw-disabled'}${highlightCategories.has(group.category) ? ' import-highlight' : ''}" draggable="true" data-category="${escapeAttribute(group.category)}">
+<li class="category${collapsed ? ' collapsed' : ''}${drawEnabled ? '' : ' draw-disabled'}${highlightCategories.has(group.category) ? ' import-highlight' : ''}${group.category === highlightPickedCat ? ' highlight' : ''}" draggable="true" data-category="${escapeAttribute(group.category)}">
   <span class="drag-handle" title="拖动调整分类顺序">⠿</span>
   <span class="category-arrow">${collapsed ? '▶' : '▼'}</span>
   <span class="category-title">${escapeHtml(group.category)}<span class="pick-count">${getCategoryPickTotal(group.items) > 0 ? ` 抽中${getCategoryPickTotal(group.items)}次` : ''}</span></span>
@@ -1600,7 +1606,7 @@ function render() {
 ${collapsed ? '' : group.items.map(({ item, index }) => {
         const skipItemAnimation = skipListAnimation || !animateCategories.has(group.category);
         return `
-<li class="item-row${skipItemAnimation ? ' no-enter-animation' : ''}${drawEnabled ? '' : ' draw-disabled'}${highlightItems.has(item) ? ' import-highlight' : ''}" draggable="true" data-index="${index}" data-category="${escapeAttribute(group.category)}">
+<li class="item-row${skipItemAnimation ? ' no-enter-animation' : ''}${drawEnabled ? '' : ' draw-disabled'}${highlightItems.has(item) ? ' import-highlight' : ''}${index === highlightPickedItem ? ' highlight' : ''}" draggable="true" data-index="${index}" data-category="${escapeAttribute(group.category)}">
   <span class="drag-handle item-drag-handle" title="拖动调整项目顺序">⠿</span>
   <span class="item-text">${escapeHtml(item)}<span class="pick-count">${formatPickCount(item)}</span></span>
 	  ${currentMode === 'tags' ? '' : `<button class="item-more-btn" data-index="${index}" title="更多操作">⋯</button>`}
@@ -2054,20 +2060,14 @@ function pick() {
             setResultText('🎯 ' + items[lastIdx], true, 260);
             newItemsUntilNextDraw.clear();
             addDrawHistory(items[lastIdx]);
+            var category = getItemCategory(items[lastIdx]);
+            if (!isCategoryCollapsed(category)) {
+                pickedItemIndex = lastIdx;
+            } else {
+                pickedCategory = category;
+            }
             incrementPickCount(items[lastIdx]);
             setTimeout(clearResultBlur, 120);
-            const category = getItemCategory(items[lastIdx]);
-            if (!isCategoryCollapsed(category)) {
-                const li = document.querySelector(`li.item-row[data-index="${lastIdx}"]`);
-                if (li) {
-                    li.classList.add('highlight');
-                }
-            } else {
-                const catLi = document.querySelector(`li.category[data-category="${CSS.escape(category)}"]`);
-                if (catLi) {
-                    catLi.classList.add('highlight');
-                }
-            }
             pickBtn.disabled = false;
             pickBtn.textContent = '抽一个';
             showResultConfirm();
