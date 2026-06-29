@@ -2061,13 +2061,11 @@ function pick() {
                 const li = document.querySelector(`li.item-row[data-index="${lastIdx}"]`);
                 if (li) {
                     li.classList.add('highlight');
-                    li.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
                 }
             } else {
                 const catLi = document.querySelector(`li.category[data-category="${CSS.escape(category)}"]`);
                 if (catLi) {
                     catLi.classList.add('highlight');
-                    catLi.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
                 }
             }
             pickBtn.disabled = false;
