@@ -2977,7 +2977,9 @@ document.getElementById('resetStatsBtn').addEventListener('click', function (e) 
     e.stopPropagation();
     document.getElementById('settingsMenu').classList.remove('open');
     this.closest('.settings-wrap').classList.remove('open');
-    resetPickCounts();
+    if (confirm('确认归零所有抽取次数和吃过次数？此操作不可撤销。')) {
+        resetPickCounts();
+    }
 });
 document.getElementById('bulkMenuBtn').addEventListener('click', function (e) {
     e.stopPropagation();
@@ -2990,7 +2992,11 @@ document.getElementById('importFileInput').addEventListener('change', function (
 });
 document.getElementById('undoImportBtn').addEventListener('click', undoImport);
 document.getElementById('mergeImportBtn').addEventListener('click', () => applyImport('merge'));
-document.getElementById('overwriteImportBtn').addEventListener('click', () => applyImport('overwrite'));
+document.getElementById('overwriteImportBtn').addEventListener('click', function () {
+    if (confirm('覆盖导入将清空当前列表，替换为导入内容。确定继续？')) {
+        applyImport('overwrite');
+    }
+});
 document.getElementById('cancelImportBtn').addEventListener('click', cancelImport);
 document.getElementById('importDialogOverlay').addEventListener('click', function (e) {
     if (e.target === this) cancelImport();
