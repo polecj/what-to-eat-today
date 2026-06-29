@@ -3144,9 +3144,11 @@ li.editing .item-drag-handle {
 
     .list-body {
         flex: 0 0 auto;
-        overflow: visible;
-        max-height: none;
+        overflow-y: auto;
+        max-height: 64vh;
         padding-right: 0;
+        overscroll-behavior-y: contain;
+        -webkit-overflow-scrolling: touch;
     }
 
     li,
