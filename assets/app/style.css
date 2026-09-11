@@ -43,7 +43,7 @@ body.welcome-active > .container {
 body.welcome-main-in > h1,
 body.welcome-main-in > .mode-switch,
 body.welcome-main-in > .container {
-    animation: welcome-main-grow-in 275ms ease-out forwards;
+    animation: welcome-main-grow-in 700ms ease-out forwards;
 }
 
 .welcome-overlay {
@@ -100,6 +100,7 @@ body.welcome-main-in > .container {
     color: #fff;
     font-size: 20px;
     font-weight: 800;
+    touch-action: manipulation;
     box-shadow: 0 10px 30px rgba(74, 144, 217, 0.34);
 }
 
@@ -108,7 +109,7 @@ body.welcome-main-in > .container {
 }
 
 .welcome-overlay.expand-out {
-    animation: welcome-expand-fade 400ms ease-in forwards;
+    animation: welcome-expand-fade 700ms ease-in forwards;
     pointer-events: none;
 }
 
@@ -336,14 +337,33 @@ body.teaching-mode .teaching-panel {
     }
 }
 
+/* 教学期间，教学流程用不到的控件统一置灰且点不动。
+   教学用得到的（添加、抽一个、确定、生成分享码、全选、全展开、搜索、
+   条目的 ⋯ 菜单、拖动、分类勾选框、改名、「?」）全程保持可用，
+   不按步骤区别对待。 */
+body.teaching-mode #resetStatsBtn,
+body.teaching-mode #shareCodeImpBtn,
+body.teaching-mode .draw-duration-setting,
+body.teaching-mode #iAteBtn {
+    opacity: 0.35;
+    filter: grayscale(0.9);
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+/* 「导入JSON」「导出JSON」都是例外：教学期间不能产生真实副作用
+   （覆盖列表、下载文件）。导入只在第 7 步模拟导入期间放开一次。 */
+body.teaching-mode .settings-menu .export-btn,
 body.teaching-mode .settings-menu .import-btn {
-    opacity: 0.4;
+    opacity: 0.35;
+    filter: grayscale(0.9);
     cursor: not-allowed;
     pointer-events: none;
 }
 
 body.teaching-import-step .settings-menu .import-btn {
     opacity: 1;
+    filter: none;
     cursor: pointer;
     pointer-events: auto;
 }
@@ -369,6 +389,29 @@ body.teaching-mode .back-from-teaching {
     border-color: #f6d266;
     color: #fff4d6;
     animation: teaching-return-flash 0.55s ease-in-out 3 alternate;
+}
+
+/* 第 9 步「下一步」和「返回」一起闪：时长、缓动、次数、方向都一致，
+   两边的 to 状态也保持同样的亮度和光晕，所以看起来是同频的 */
+.teaching-next-btn.teaching-next-flash {
+    border-color: #f6d266;
+    color: #fff4d6;
+    animation: teaching-next-flash 0.55s ease-in-out 3 alternate;
+}
+
+@keyframes teaching-next-flash {
+    from {
+        box-shadow:
+            0 0 0 1px rgba(246, 210, 102, 0.18),
+            0 0 8px rgba(212, 160, 23, 0.24);
+        background: rgba(212, 160, 23, 0.16);
+    }
+    to {
+        box-shadow:
+            0 0 0 4px rgba(246, 210, 102, 0.68),
+            0 0 30px rgba(212, 160, 23, 0.88);
+        background: rgba(212, 160, 23, 0.3);
+    }
 }
 
 @keyframes teaching-return-flash {
@@ -519,7 +562,7 @@ body.page-home-in .container {
     border-radius: 999px;
     background: linear-gradient(135deg, #4a90d9, #6c5ce7);
     box-shadow: 0 6px 18px rgba(74, 144, 217, 0.34);
-    transition: transform 0.28s cubic-bezier(0.2, 0.9, 0.2, 1.08), background 0.28s, box-shadow 0.28s;
+    transition: transform 0.5s cubic-bezier(0.2, 0.9, 0.2, 1.08), background 0.5s, box-shadow 0.5s;
 }
 
 body.tag-mode .mode-switch::before {
@@ -537,7 +580,7 @@ body.tag-mode .mode-switch::before {
     border-radius: 999px;
     background: transparent;
     color: #8d8da8;
-    transition: color 0.2s, transform 0.2s;
+    transition: color 0.35s, transform 0.35s;
 }
 
 .mode-btn:hover {
@@ -647,7 +690,7 @@ body.teaching-mode .right-panel {
     color: #ddd;
     opacity: 0;
     pointer-events: none;
-    z-index: 120;
+    z-index: 150;
     transition: opacity 0.18s, transform 0.18s;
     font-size: 13px;
     white-space: nowrap;
@@ -719,8 +762,7 @@ body.teaching-mode .right-panel {
     background: rgba(45, 106, 69, 0.16);
 }
 
-.import-dialog-overlay,
-.bulk-edit-overlay {
+.import-dialog-overlay {
     position: fixed;
     inset: 0;
     display: none;
@@ -729,13 +771,11 @@ body.teaching-mode .right-panel {
     z-index: 85;
 }
 
-.import-dialog-overlay.show,
-.bulk-edit-overlay.show {
+.import-dialog-overlay.show {
     display: grid;
 }
 
-.import-dialog-card,
-.bulk-edit-card {
+.import-dialog-card {
     width: min(520px, 86vw);
     padding: 24px 28px;
     border-radius: 18px;
@@ -745,14 +785,12 @@ body.teaching-mode .right-panel {
     color: #ddd;
 }
 
-.import-dialog-card h2,
-.bulk-edit-card h2 {
+.import-dialog-card h2 {
     margin-bottom: 12px;
     color: #fff;
 }
 
-.import-dialog-card p,
-.bulk-edit-card p {
+.import-dialog-card p {
     margin-bottom: 18px;
     line-height: 1.6;
 }
@@ -765,26 +803,29 @@ body.teaching-mode .right-panel {
     word-break: break-all;
 }
 
-.bulk-edit-card textarea {
-    width: 100%;
-    min-height: 260px;
-    resize: vertical;
-    padding: 12px;
-    border-radius: 10px;
-    border: 1px solid #3a4a75;
-    background: #111936;
-    color: #e0e0e0;
-    outline: none;
-    line-height: 1.6;
-}
-
-.import-dialog-actions,
-.bulk-edit-actions {
+.import-dialog-actions {
     display: flex;
     justify-content: flex-end;
     gap: 10px;
     flex-wrap: wrap;
     margin-top: 14px;
+}
+
+/* 教学第 7 步只允许合并导入，另外两个按钮置灰 */
+.import-dialog-actions button:disabled {
+    opacity: 0.4;
+    filter: grayscale(0.8);
+    cursor: not-allowed;
+}
+
+.import-dialog-actions button:disabled:hover {
+    background: #2a3a6a;
+    border-color: #4a5a8a;
+}
+
+.import-dialog-actions button.danger:disabled:hover {
+    background: #e74c3c;
+    border-color: #e74c3c;
 }
 
 .share-code-overlay {
@@ -847,6 +888,34 @@ body.teaching-mode .right-panel {
 
 .share-code-error.show {
     display: block;
+}
+
+/* 教学模式下分享码弹窗的提示（主页模式不显示）。
+   用 .share-code-card 前缀压过 .share-code-card p 的字号与颜色 */
+.share-code-card .share-code-note {
+    display: none;
+    margin: 0;
+    color: #f6d266;
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+.share-code-card .share-code-note.show {
+    display: block;
+}
+
+.share-code-card p.hidden {
+    display: none;
+}
+
+.share-code-card button:disabled {
+    opacity: 0.4;
+    filter: grayscale(0.8);
+    cursor: not-allowed;
+}
+
+.share-code-card button:disabled:hover {
+    background: #2a3a6a;
 }
 
 .share-code-actions {
@@ -1120,18 +1189,66 @@ body.teaching-mode .right-panel {
     margin-bottom: 16px;
 }
 
-.eaten-select {
+.eaten-select-field {
+    position: relative;
     flex: 1;
+    min-width: 0;
+}
+
+.eaten-select-btn {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    width: 100%;
     padding: 7px 10px;
     border-radius: 4px;
     border: 1px solid #3a4a75;
     background: rgba(17, 25, 54, 0.9);
     color: #e0e0e0;
-    font-size: 14px;
+    font-size: 15px;
+    text-align: left;
+    cursor: pointer;
 }
 
-.eaten-select:disabled {
+.eaten-select-btn:disabled {
     opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.eaten-select-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.eaten-select-label.placeholder {
+    color: #8d8da8;
+}
+
+.eaten-select-caret {
+    flex: 0 0 auto;
+    color: #8d8da8;
+    font-size: 12px;
+    line-height: 1;
+}
+
+/* 比 .category-dropdown-menu 更精确，覆盖其 min-width 并对齐输入框宽度 */
+.eaten-select-row .eaten-select-menu {
+    display: none;
+    width: 100%;
+    min-width: 0;
+}
+
+.eaten-select-row .eaten-select-menu.open {
+    display: block;
+}
+
+.eaten-select-menu .eaten-select-empty {
+    display: block;
+    padding: 6px 10px;
+    color: #8d8da8;
+    font-size: 15px;
 }
 
 .eaten-dialog-actions {
@@ -1249,17 +1366,27 @@ body.teaching-mode .right-panel {
     display: block;
     width: 100%;
     text-align: left;
-    padding: 5px 10px;
+    padding: 6px 10px;
     border: none;
     background: transparent;
     color: #ddd;
-    font-size: 13px;
+    font-size: 15px;
     border-radius: 3px;
     cursor: pointer;
 }
 
 .category-dropdown-menu button:hover {
     background: rgba(255, 255, 255, 0.08);
+}
+
+/* 教学第 1、2 步的输入建议选项，沿用同一套下拉样式 */
+.teaching-suggestion-menu {
+    min-width: 0;
+}
+
+.teaching-suggestion-menu button {
+    color: #f6d266;
+    white-space: nowrap;
 }
 
 .name-input {
@@ -1888,6 +2015,10 @@ body.tag-motion-on .fixed-only {
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 22px;
     overflow: hidden;
+    /* 标签自带内联 z-index（可随条目数增长到很大），
+       这里建立层叠上下文把它们的层级收敛在画板内，
+       避免遮住抽取结果弹层 */
+    isolation: isolate;
     background:
         radial-gradient(circle at 18% 20%, rgba(108, 92, 231, 0.22), transparent 34%),
         radial-gradient(circle at 76% 70%, rgba(46, 204, 113, 0.16), transparent 30%),
@@ -1934,7 +2065,7 @@ body.tag-motion-on .fixed-only {
     font-weight: 800;
     box-shadow: 0 18px 58px rgba(0, 0, 0, 0.46);
     pointer-events: none;
-    z-index: 120;
+    z-index: 140;
     transition:
         left 0.26s cubic-bezier(0.18, 0.86, 0.32, 1.16),
         top 0.26s cubic-bezier(0.18, 0.86, 0.32, 1.16),
@@ -2251,7 +2382,7 @@ body.tag-motion-on .mystery-tag.draw-winner {
     display: none;
     place-items: center;
     background: rgba(5, 5, 12, 0.38);
-    z-index: 50;
+    z-index: 130;
 }
 
 .tag-reveal-overlay.show,
@@ -2794,7 +2925,6 @@ li.item-row.draw-disabled {
     color: #ddd;
 }
 
-.bulk-edit-btn,
 .rename-category-btn {
     margin-left: 8px;
     padding: 2px 7px;
@@ -2805,7 +2935,6 @@ li.item-row.draw-disabled {
     color: #999;
 }
 
-.bulk-edit-btn:hover,
 .rename-category-btn:hover {
     color: #fff;
     border-color: #888;

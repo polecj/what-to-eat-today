@@ -229,7 +229,6 @@ let exportReminderTimer = null;
 let toastTimer = null;
 let hasUnsavedExport = false;
 let listSearchQuery = '';
-let bulkEditCategory = '';
 let drawHistory = loadDrawHistory();
 let drawHistoryCollapsed = true;
 let pickCounts = loadPickCounts();
@@ -1283,7 +1282,11 @@ function resetImportDialogActions() {
     const mergeBtn = document.getElementById('mergeImportBtn');
     if (mergeBtn) mergeBtn.disabled = false;
     mergeBtn?.classList.remove('teaching-highlight');
-    document.getElementById('overwriteImportBtn')?.classList.remove('teaching-highlight');
+    const overwriteBtn = document.getElementById('overwriteImportBtn');
+    if (overwriteBtn) overwriteBtn.disabled = false;
+    overwriteBtn?.classList.remove('teaching-highlight');
+    const cancelBtn = document.getElementById('cancelImportBtn');
+    if (cancelBtn) cancelBtn.disabled = false;
 }
 
 function handleImportFile(file) {
@@ -1359,6 +1362,8 @@ function applyImport(mode) {
 }
 
 function cancelImport() {
+    // 教学第 7 步只能用「合并导入」继续，点遮罩也不能绕过
+    if (document.body.classList.contains('teaching-mode') && teachingStep === 7 && !teachingMockImportDone) return;
     pendingImportData = null;
     document.getElementById('importDialogOverlay').classList.remove('show');
     resetImportDialogActions();
@@ -1400,6 +1405,10 @@ function openShareCodeView() {
     var code = encodeShareCode(items.join('\n'));
     var textarea = document.getElementById('shareCodeViewTextarea');
     textarea.value = code;
+    textarea.classList.remove('teaching-empty');
+    document.getElementById('shareCodeViewHint').classList.remove('hidden');
+    document.getElementById('shareCodeViewNote').classList.remove('show');
+    document.getElementById('shareCodeViewCopyBtn').disabled = false;
     document.getElementById('shareCodeViewOverlay').classList.add('show');
     textarea.select();
     try {
@@ -1408,6 +1417,16 @@ function openShareCodeView() {
         }).catch(function () {});
     } catch (e) {}
     markListExported();
+}
+
+// 教学第 8 步：沿用主页同一个分享码弹窗，但不真的生成分享码
+function openTeachingShareCodeView() {
+    var textarea = document.getElementById('shareCodeViewTextarea');
+    textarea.value = '';
+    document.getElementById('shareCodeViewHint').classList.add('hidden');
+    document.getElementById('shareCodeViewNote').classList.add('show');
+    document.getElementById('shareCodeViewCopyBtn').disabled = true;
+    document.getElementById('shareCodeViewOverlay').classList.add('show');
 }
 
 function copyShareCode() {
@@ -1687,86 +1706,6 @@ function getItemNameInCategory(item, category) {
     if (category === UNCATEGORIZED) return item;
     const prefix = category + ' ';
     return item.startsWith(prefix) ? item.slice(prefix.length) : item;
-}
-
-function openBulkEditPicker() {
-    alert('选择类别以批量更改');
-    const groups = buildGroups();
-    if (groups.length === 0) return;
-    if (groups.length === 1) {
-        openBulkEdit(groups[0].category);
-        return;
-    }
-    collapsedCategories = [];
-    saveCollapsedCategories(collapsedCategories);
-    if (currentMode === 'tags') {
-        tagExpandedCategories = groups.map(group => group.category);
-        document.querySelector('.right-panel').classList.add('drawer-open');
-    }
-    render();
-}
-
-function openBulkEdit(category) {
-    bulkEditCategory = category;
-    const group = buildGroups().find(item => item.category === category);
-    if (!group) return;
-    document.getElementById('bulkEditTitle').textContent = `批量编辑：${category}`;
-    document.getElementById('bulkEditTextarea').value = group.items
-        .map(({ item }) => getItemNameInCategory(item, category))
-        .join('\n');
-    document.getElementById('bulkEditOverlay').classList.add('show');
-    document.getElementById('bulkEditTextarea').focus();
-}
-
-function closeBulkEdit() {
-    bulkEditCategory = '';
-    document.getElementById('bulkEditOverlay').classList.remove('show');
-}
-
-function saveBulkEdit() {
-    if (!bulkEditCategory) return;
-    const lines = document.getElementById('bulkEditTextarea').value
-        .split('\n')
-        .map(line => line.trim())
-        .filter(Boolean);
-    const seenLines = new Set();
-    const nextItemsForCategory = [];
-
-    lines.forEach(line => {
-        const val = bulkEditCategory === UNCATEGORIZED ? line : `${bulkEditCategory} ${line}`;
-        const key = val.toLowerCase();
-        if (!seenLines.has(key)) {
-            seenLines.add(key);
-            nextItemsForCategory.push(val);
-        }
-    });
-
-    const existingOtherKeys = new Set(items
-        .filter(item => getItemCategory(item) !== bulkEditCategory)
-        .map(item => item.trim().toLowerCase()));
-    const filteredNext = nextItemsForCategory.filter(item => !existingOtherKeys.has(item.trim().toLowerCase()));
-
-    let inserted = false;
-    const nextItems = [];
-    items.forEach(item => {
-        if (getItemCategory(item) === bulkEditCategory) {
-            if (!inserted) {
-                nextItems.push(...filteredNext);
-                inserted = true;
-            }
-        } else {
-            nextItems.push(item);
-        }
-    });
-    if (!inserted) nextItems.push(...filteredNext);
-
-    items = nextItems;
-    sortItems(false);
-    tagLayout = [];
-    closeBulkEdit();
-    render();
-    if (currentMode === 'tags') renderTagBoard();
-    markListChanged();
 }
 
 // 保留已有项目原样；新项目由“类别 + 名称”输入框决定是否带分类
@@ -2089,6 +2028,9 @@ function pick() {
 
 function clearTeachingHighlights() {
     document.querySelectorAll('.teaching-highlight').forEach(el => el.classList.remove('teaching-highlight'));
+    // 第 9 步的闪烁类也要清掉，否则「下一步」「返回」会一直停在闪完的高亮态
+    document.querySelectorAll('.teaching-return-flash, .teaching-next-flash')
+        .forEach(el => el.classList.remove('teaching-return-flash', 'teaching-next-flash'));
 }
 
 function updateTeachingInputLock() {
@@ -2096,7 +2038,15 @@ function updateTeachingInputLock() {
     const nameInput = document.getElementById('itemInput');
     const addBtn = document.getElementById('addBtn');
     const pickBtn = document.getElementById('pickBtn');
-    if (!document.body.classList.contains('teaching-mode')) {
+    const inTeachingMode = document.body.classList.contains('teaching-mode');
+    // 教学第 1、2 步设成只读，点输入框只弹建议选项，不唤起设备键盘
+    const categoryReadOnly = inTeachingMode && teachingStep === 1;
+    const nameReadOnly = inTeachingMode && teachingStep === 2;
+    categoryInput.readOnly = categoryReadOnly;
+    nameInput.readOnly = nameReadOnly;
+    categoryInput.inputMode = categoryReadOnly ? 'none' : 'text';
+    nameInput.inputMode = nameReadOnly ? 'none' : 'text';
+    if (!inTeachingMode) {
         categoryInput.disabled = false;
         nameInput.disabled = false;
         if (addBtn) addBtn.disabled = isCategoryInputInvalid(categoryInput);
@@ -2151,6 +2101,47 @@ function updateTeachingNextState() {
     updateTeachingInputLock();
 }
 
+// 教学第 1、2 步的输入框是只读的，改成点一下在下方弹出建议选项，
+// 这样手机上不会唤起输入法，照着点就能完成这两步。
+const TEACHING_SUGGESTIONS = {
+    1: { inputId: 'categoryInput', label: '输入“一食”', value: '一食' },
+    2: { inputId: 'itemInput', label: '输入“兰州拉面”', value: '兰州拉面' }
+};
+
+function closeTeachingSuggestionMenu() {
+    document.getElementById('teachingSuggestionMenu')?.remove();
+}
+
+function openTeachingSuggestionMenu(inputId) {
+    // teachingStep 退出教学后不会归零，这里必须自己判断，否则主页点输入框也会弹建议
+    if (!document.body.classList.contains('teaching-mode')) return;
+    const suggestion = TEACHING_SUGGESTIONS[teachingStep];
+    if (!suggestion || suggestion.inputId !== inputId) return;
+    if (document.getElementById('teachingSuggestionMenu')) {
+        closeTeachingSuggestionMenu();
+        return;
+    }
+    const input = document.getElementById(inputId);
+    if (!input) return;
+    const menu = document.createElement('div');
+    menu.className = 'category-dropdown-menu teaching-suggestion-menu';
+    menu.id = 'teachingSuggestionMenu';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = suggestion.label;
+    btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        closeTeachingSuggestionMenu();
+        input.value = suggestion.value;
+        if (inputId === 'categoryInput') updateCategoryValidity(input);
+        updateTeachingNextState();
+    });
+    menu.appendChild(btn);
+    (input.closest('.item-input-group') || document.body).appendChild(menu);
+    menu.style.left = `${input.offsetLeft}px`;
+    menu.style.minWidth = `${Math.max(input.offsetWidth, 120)}px`;
+}
+
 function addTeachingDemoItems() {
     const demoItems = ['一食 沙县小吃', '二食 麻辣香锅', '瑞幸咖啡'];
     demoItems.forEach(item => {
@@ -2189,12 +2180,21 @@ function flashTeachingStepZeroCard() {
     card.classList.add('step-zero-flash');
 }
 
-function flashTeachingReturnButton() {
+// 第 9 步要让「下一步」和「返回」一起闪。两边在同一个循环里去掉类、强制重排、
+// 再加回类，动画时长与方向完全相同，所以看起来是同步的。
+function flashTeachingStepNineActions() {
+    const nextBtn = document.getElementById('teachingNextBtn');
     const backBtn = document.getElementById('backFromTeachingBtn');
-    if (!backBtn) return;
-    backBtn.classList.remove('teaching-return-flash');
-    void backBtn.offsetWidth;
-    backBtn.classList.add('teaching-return-flash');
+    if (nextBtn) {
+        nextBtn.classList.remove('teaching-next-flash');
+        void nextBtn.offsetWidth;
+        nextBtn.classList.add('teaching-next-flash');
+    }
+    if (backBtn) {
+        backBtn.classList.remove('teaching-return-flash');
+        void backBtn.offsetWidth;
+        backBtn.classList.add('teaching-return-flash');
+    }
 }
 
 function getTeachingMockImportData() {
@@ -2226,10 +2226,17 @@ function applyTeachingMockImport() {
     const mergeBtn = document.getElementById('mergeImportBtn');
     if (mergeBtn) mergeBtn.disabled = false;
     mergeBtn?.classList.add('teaching-highlight');
+    // 教学这一步只演示合并导入，另外两个入口封住
+    const overwriteBtn = document.getElementById('overwriteImportBtn');
+    if (overwriteBtn) overwriteBtn.disabled = true;
+    const cancelBtn = document.getElementById('cancelImportBtn');
+    if (cancelBtn) cancelBtn.disabled = true;
 }
 
 function completeTeachingMockImport() {
     teachingMockImportDone = true;
+    // 模拟导入做完了，把「导入JSON」重新封住，避免它看着能点其实没反应
+    document.body.classList.remove('teaching-import-step');
     undoImportState = null;
     hasUnsavedExport = false;
     hideImportUndoPrompt();
@@ -2262,7 +2269,8 @@ function highlightTeachingFeature(featureKeys) {
         settingsWrap?.classList.add('open');
         settingsMenu?.classList.add('open');
         document.getElementById('settingsBtn')?.classList.add('teaching-highlight');
-        document.getElementById('exportBtn')?.classList.add('teaching-highlight');
+        // 「导出JSON」教学期间是禁用的（不下载文件），所以不把它点亮，
+        // 只打开菜单让用户看到入口位置
         return;
     }
     if (key === 'rename') {
@@ -2293,7 +2301,8 @@ function openSettingsMenuForTeaching(highlightId) {
 
 function setTeachingStep(step) {
     teachingStep = step;
-    document.body.classList.toggle('teaching-import-step', step === 7);
+    // 模拟导入做完后即使回到第 7 步也不再放开「导入JSON」
+    document.body.classList.toggle('teaching-import-step', step === 7 && !teachingMockImportDone);
     clearTeachingHighlights();
     const kicker = document.getElementById('teachingKicker');
     const title = document.getElementById('teachingTitle');
@@ -2317,11 +2326,10 @@ function setTeachingStep(step) {
     if (step === 1) {
         kicker.textContent = '1';
         title.textContent = '添加有类别的条目';
-        desc.innerHTML = '先在类别框输入 <strong>一食</strong>。类别可以为空；如果填写，必须是正好两个汉字。输入完成后，点击下一步。';
+        desc.innerHTML = '先点击<strong>类别框</strong>，在下方选择 <strong>输入“一食”</strong>。类别可以为空；如果填写，必须是正好两个汉字。选好后，点击下一步。';
         nextBtn.textContent = '下一步';
         if (teachingStep === teachingLatestStep && !isTeachingStepComplete()) {
             categoryInput?.classList.add('teaching-highlight');
-            categoryInput?.focus();
         }
         updateTeachingNextState();
         return;
@@ -2330,11 +2338,10 @@ function setTeachingStep(step) {
     if (step === 2) {
         kicker.textContent = '2';
         title.textContent = '填写条目名称';
-        desc.innerHTML = '现在在名称框输入 <strong>兰州拉面</strong>。名称是实际会参与抽取的内容。';
+        desc.innerHTML = '现在点击<strong>名称框</strong>，在下方选择 <strong>输入“兰州拉面”</strong>。名称是实际会参与抽取的内容。';
         nextBtn.textContent = '下一步';
         if (teachingStep === teachingLatestStep && !isTeachingStepComplete()) {
             nameInput?.classList.add('teaching-highlight');
-            nameInput?.focus();
         }
         updateTeachingNextState();
         return;
@@ -2427,7 +2434,7 @@ function setTeachingStep(step) {
         title.textContent = '基础操作完成';
         desc.innerHTML = '至此你已经学会了所有基础操作。你可以从左上角退出教学模式，也可以继续了解更多小功能。';
         nextBtn.textContent = '下一步';
-        flashTeachingReturnButton();
+        flashTeachingStepNineActions();
         updateTeachingNextState();
         return;
     }
@@ -2484,7 +2491,7 @@ function setTeachingStep(step) {
         const features = [
             { key: 'scope', label: '抽取范围', text: '每个分类右侧的勾选框表示是否参与抽取；取消勾选后，普通抽取不会抽到该分类，标签模式中也会变灰不可点按。右上角的 <strong>全选</strong> 可以快速全选 / 全不选。' },
             { key: 'rename', label: '类别改名', text: '分类标题右侧的 <strong>改名</strong> 可以重命名整个分类。输入仍需是两个汉字，分类内项目会一起换到新类别。' },
-            { key: 'export', label: '导出备份', text: '列表整理好后，可以从右上角菜单导出JSON，之后需要迁移或备份时更安心。' }
+            { key: 'export', label: '导出备份', text: '列表整理好后，可以从右上角菜单导出JSON，之后需要迁移或备份时更安心。教学模式下这个入口是灰的，不会真的下载文件。' }
         ];
         kicker.textContent = '14';
         title.textContent = '列表管理功能';
@@ -2572,7 +2579,9 @@ function enterTeachingMode() {
         uncheckedCategories: [...uncheckedCategories],
         listSearchQuery,
         hasUnsavedExport,
-        newItemsUntilNextDraw: [...newItemsUntilNextDraw]
+        newItemsUntilNextDraw: [...newItemsUntilNextDraw],
+        categoryInputValue: document.getElementById('categoryInput').value,
+        itemInputValue: document.getElementById('itemInput').value
     };
     teachingItems = [];
     teachingCategoryOrder = [];
@@ -2594,6 +2603,12 @@ function enterTeachingMode() {
     switchMode('normal');
     document.body.classList.add('teaching-mode');
     document.getElementById('listSearchInput').value = '';
+    // 清空输入框，教学第 1、2 步从空白开始（进入前的值存在 savedMainState 里）
+    const teachingCategoryInput = document.getElementById('categoryInput');
+    teachingCategoryInput.value = '';
+    document.getElementById('itemInput').value = '';
+    updateCategoryValidity(teachingCategoryInput);
+    closeTeachingSuggestionMenu();
     updateExportStatus();
     ensureListOpen();
     setTeachingStep(0);
@@ -2618,7 +2633,12 @@ function closeTeachingExitDialog() {
 
 function exitTeachingMode() {
     clearTeachingHighlights();
+    closeTeachingSuggestionMenu();
+    closeShareCodeView();
     document.body.classList.remove('teaching-mode');
+    // 教学第 1、2 步可能填过内容，退出时还原进入前的值，避免串到主页面上
+    const restoredCategoryInput = savedMainState ? (savedMainState.categoryInputValue || '') : '';
+    const restoredItemInput = savedMainState ? (savedMainState.itemInputValue || '') : '';
     if (savedMainState) {
         items = savedMainState.items;
         categoryOrder = savedMainState.categoryOrder;
@@ -2629,6 +2649,10 @@ function exitTeachingMode() {
         newItemsUntilNextDraw = new Set(savedMainState.newItemsUntilNextDraw || []);
         savedMainState = null;
     }
+    const categoryInput = document.getElementById('categoryInput');
+    categoryInput.value = restoredCategoryInput;
+    document.getElementById('itemInput').value = restoredItemInput;
+    updateCategoryValidity(categoryInput);
     document.getElementById('listSearchInput').value = listSearchQuery;
     updateExportStatus();
     updateTeachingInputLock();
@@ -2744,13 +2768,23 @@ function enterWelcomePage() {
         overlay.remove();
         document.body.classList.remove('welcome-main-in');
         enableGuideAttention();
-    }, 420);
+    }, 720);
 }
 
 // ===== 事件绑定 =====
 document.getElementById('addBtn').addEventListener('click', addItem);
+document.getElementById('categoryInput').addEventListener('click', function () {
+    openTeachingSuggestionMenu('categoryInput');
+});
+document.getElementById('itemInput').addEventListener('click', function () {
+    openTeachingSuggestionMenu('itemInput');
+});
 document.getElementById('categoryDropdownBtn').addEventListener('click', function (e) {
     e.stopPropagation();
+    if (document.body.classList.contains('teaching-mode')) {
+        openTeachingSuggestionMenu('categoryInput');
+        return;
+    }
     var existing = document.getElementById('categoryDropdownMenu');
     if (existing) { existing.remove(); return; }
     var groups = buildGroups();
@@ -2849,55 +2883,115 @@ document.getElementById('statsOverlay').addEventListener('click', function (e) {
 });
 
 // 今天我吃了……
+// 就餐弹窗选中的值（原生 select 已换成和类别输入框一致的自定义列表）
+var eatenCategory = '';
+var eatenItem = '';
+
+function closeEatenMenus() {
+    document.getElementById('eatenCategoryMenu').classList.remove('open');
+    document.getElementById('eatenItemMenu').classList.remove('open');
+}
+
+function fillEatenMenu(menu, options, onPick) {
+    menu.innerHTML = '';
+    if (options.length === 0) {
+        var empty = document.createElement('span');
+        empty.className = 'eaten-select-empty';
+        empty.textContent = '暂无可选项';
+        menu.appendChild(empty);
+        return;
+    }
+    options.forEach(function (opt) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = opt.label;
+        btn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            onPick(opt.value);
+            closeEatenMenus();
+        });
+        menu.appendChild(btn);
+    });
+}
+
+function setEatenItem(item) {
+    eatenItem = item;
+    var label = document.getElementById('eatenItemSelectLabel');
+    label.textContent = item ? getItemNameInCategory(item, eatenCategory) : '选择项目';
+    label.classList.toggle('placeholder', !item);
+    document.getElementById('eatenConfirmBtn').disabled = !item;
+}
+
+function setEatenCategory(category) {
+    eatenCategory = category;
+    var label = document.getElementById('eatenCategorySelectLabel');
+    label.textContent = category || '选择类别';
+    label.classList.toggle('placeholder', !category);
+
+    var itemBtn = document.getElementById('eatenItemSelectBtn');
+    var itemMenu = document.getElementById('eatenItemMenu');
+    itemMenu.innerHTML = '';
+    setEatenItem('');
+    if (!category) {
+        itemBtn.disabled = true;
+        return;
+    }
+    itemBtn.disabled = false;
+    var catItems = items.filter(function (item) { return getItemCategory(item) === category; });
+    fillEatenMenu(itemMenu, catItems.map(function (item) {
+        return { value: item, label: getItemNameInCategory(item, category) };
+    }), setEatenItem);
+}
+
 document.getElementById('iAteBtn').addEventListener('click', function () {
     if (document.body.classList.contains('teaching-mode')) return;
-    var catSelect = document.getElementById('eatenCategorySelect');
-    var itemSelect = document.getElementById('eatenItemSelect');
-    var confirmBtn = document.getElementById('eatenConfirmBtn');
-    var groups = buildGroups();
-    catSelect.innerHTML = '<option value="">选择类别</option>';
-    for (var i = 0; i < groups.length; i++) {
-        catSelect.innerHTML += '<option value="' + escapeAttribute(groups[i].category) + '">' + escapeHtml(groups[i].category) + '</option>';
-    }
-    itemSelect.innerHTML = '<option value="">选择项目</option>';
-    itemSelect.disabled = true;
-    confirmBtn.disabled = true;
+    closeEatenMenus();
+    setEatenCategory('');
+    fillEatenMenu(document.getElementById('eatenCategoryMenu'), buildGroups().map(function (group) {
+        return { value: group.category, label: group.category };
+    }), setEatenCategory);
     document.getElementById('eatenDialogOverlay').classList.add('show');
 });
 
-document.getElementById('eatenCategorySelect').addEventListener('change', function () {
-    var cat = this.value;
-    var itemSelect = document.getElementById('eatenItemSelect');
-    var confirmBtn = document.getElementById('eatenConfirmBtn');
-    itemSelect.innerHTML = '<option value="">选择项目</option>';
-    if (!cat) { itemSelect.disabled = true; confirmBtn.disabled = true; return; }
-    var catItems = items.filter(function (item) { return getItemCategory(item) === cat; });
-    for (var i = 0; i < catItems.length; i++) {
-        var name = getItemNameInCategory(catItems[i], cat);
-        itemSelect.innerHTML += '<option value="' + escapeAttribute(catItems[i]) + '">' + escapeHtml(name) + '</option>';
-    }
-    itemSelect.disabled = false;
-    confirmBtn.disabled = true;
+document.getElementById('eatenCategorySelectBtn').addEventListener('click', function (e) {
+    e.stopPropagation();
+    var menu = document.getElementById('eatenCategoryMenu');
+    var shouldOpen = !menu.classList.contains('open');
+    closeEatenMenus();
+    if (shouldOpen) menu.classList.add('open');
 });
 
-document.getElementById('eatenItemSelect').addEventListener('change', function () {
-    document.getElementById('eatenConfirmBtn').disabled = !this.value;
+document.getElementById('eatenItemSelectBtn').addEventListener('click', function (e) {
+    e.stopPropagation();
+    var menu = document.getElementById('eatenItemMenu');
+    var shouldOpen = !menu.classList.contains('open');
+    closeEatenMenus();
+    if (shouldOpen) menu.classList.add('open');
 });
 
 document.getElementById('eatenConfirmBtn').addEventListener('click', function () {
-    var item = document.getElementById('eatenItemSelect').value;
-    if (!item) return;
-    incrementEatenCount(item);
+    if (!eatenItem) return;
+    incrementEatenCount(eatenItem);
+    closeEatenMenus();
     document.getElementById('eatenDialogOverlay').classList.remove('show');
     showToast('已记录');
 });
 
 document.getElementById('eatenCancelBtn').addEventListener('click', function () {
+    closeEatenMenus();
     document.getElementById('eatenDialogOverlay').classList.remove('show');
 });
 
 document.getElementById('eatenDialogOverlay').addEventListener('click', function (e) {
-    if (e.target === this) this.classList.remove('show');
+    if (e.target === this) {
+        closeEatenMenus();
+        this.classList.remove('show');
+    }
+});
+
+// 下拉展开时会盖住弹窗底部的确认/取消，按下空白处先收起，避免误选到菜单项
+document.addEventListener('pointerdown', function (e) {
+    if (!e.target.closest('.eaten-select-field')) closeEatenMenus();
 });
 
 document.getElementById('drawTagBtn').addEventListener('click', drawRandomTag);
@@ -2908,10 +3002,12 @@ document.getElementById('motionSpeedInput').addEventListener('input', function (
     tagMotionSpeed = parseFloat(this.value) || 1;
 });
 document.getElementById('drawDurationMinusBtn').addEventListener('click', function (e) {
+    if (document.body.classList.contains('teaching-mode')) return;
     e.stopPropagation();
     setDrawDurationSeconds(drawDurationSeconds - 0.1);
 });
 document.getElementById('drawDurationPlusBtn').addEventListener('click', function (e) {
+    if (document.body.classList.contains('teaching-mode')) return;
     e.stopPropagation();
     setDrawDurationSeconds(drawDurationSeconds + 0.1);
 });
@@ -2933,6 +3029,7 @@ document.getElementById('teachingMockImportOverlay').addEventListener('click', f
     if (e.target === this && teachingMockImportDone) closeTeachingMockImport();
 });
 document.getElementById('exportBtn').addEventListener('click', function () {
+    // 和「导入JSON」一样，教学期间不产生真实副作用：不下载任何文件
     if (document.body.classList.contains('teaching-mode')) return;
     exportListFile();
 });
@@ -2948,7 +3045,14 @@ document.getElementById('importBtn').addEventListener('click', function () {
     openImportFile();
 });
 document.getElementById('shareCodeGenBtn').addEventListener('click', function (e) {
-    if (document.body.classList.contains('teaching-mode')) return;
+    if (document.body.classList.contains('teaching-mode')) {
+        // 教学全程都可用，弹的是教学版分享码窗口，不会真的生成分享码
+        e.stopPropagation();
+        document.getElementById('settingsMenu').classList.remove('open');
+        this.closest('.settings-wrap').classList.remove('open');
+        openTeachingShareCodeView();
+        return;
+    }
     e.stopPropagation();
     document.getElementById('settingsMenu').classList.remove('open');
     this.closest('.settings-wrap').classList.remove('open');
@@ -2979,12 +3083,6 @@ document.getElementById('resetStatsBtn').addEventListener('click', function (e) 
         resetPickCounts();
     }
 });
-document.getElementById('bulkMenuBtn').addEventListener('click', function (e) {
-    e.stopPropagation();
-    document.getElementById('settingsMenu').classList.remove('open');
-    this.closest('.settings-wrap').classList.remove('open');
-    openBulkEditPicker();
-});
 document.getElementById('importFileInput').addEventListener('change', function () {
     handleImportFile(this.files[0]);
 });
@@ -3006,11 +3104,6 @@ document.getElementById('shareCodeImportCancelBtn').addEventListener('click', cl
 document.getElementById('listSearchInput').addEventListener('input', function () {
     listSearchQuery = this.value.trim().toLowerCase();
     render();
-});
-document.getElementById('saveBulkEditBtn').addEventListener('click', saveBulkEdit);
-document.getElementById('cancelBulkEditBtn').addEventListener('click', closeBulkEdit);
-document.getElementById('bulkEditOverlay').addEventListener('click', function (e) {
-    if (e.target === this) closeBulkEdit();
 });
 document.addEventListener('keydown', function (e) {
     if (!document.body.classList.contains('teaching-mode')) return;
@@ -3038,6 +3131,15 @@ document.addEventListener('click', function (e) {
     if (catDropdown && !e.target.closest('#categoryDropdownMenu') && !e.target.closest('#categoryDropdownBtn')) {
         catDropdown.remove();
     }
+
+    var suggestionMenu = document.getElementById('teachingSuggestionMenu');
+    if (suggestionMenu && !e.target.closest('#teachingSuggestionMenu') &&
+        !e.target.closest('#categoryInput') && !e.target.closest('#itemInput') &&
+        !e.target.closest('#categoryDropdownBtn')) {
+        suggestionMenu.remove();
+    }
+
+    closeEatenMenus();
 
     const editingRow = document.querySelector('li.item-row.editing');
     if (editingRow && !e.target.closest('li.item-row.editing')) {

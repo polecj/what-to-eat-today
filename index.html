@@ -108,8 +108,6 @@
                                 </span>
                             </div>
                             <span class="menu-divider"></span>
-                            <button class="bulk-menu-btn menu-item" id="bulkMenuBtn" title="批量编辑分类">批量编辑</button>
-                            <span class="menu-divider"></span>
                             <button class="import-btn menu-item" id="importBtn" title="导入JSON文件">导入JSON</button>
                             <button class="export-btn menu-item" id="exportBtn" title="导出JSON文件">导出JSON</button>
                             <span class="menu-divider"></span>
@@ -161,8 +159,9 @@
     <div id="shareCodeViewOverlay" class="share-code-overlay">
         <div class="share-code-card">
             <h2>分享码</h2>
-            <p>分享码已生成，发送给其他设备即可导入此列表</p>
+            <p id="shareCodeViewHint">分享码已生成，发送给其他设备即可导入此列表</p>
             <textarea id="shareCodeViewTextarea" readonly spellcheck="false"></textarea>
+            <p id="shareCodeViewNote" class="share-code-note">操作成功，教学模式不生成分享码</p>
             <div class="share-code-actions">
                 <button id="shareCodeViewCopyBtn">📋 复制</button>
                 <button id="shareCodeViewConfirmBtn">确认</button>
@@ -178,18 +177,6 @@
             <div class="share-code-actions">
                 <button id="shareCodeImportConfirmBtn">确认</button>
                 <button id="shareCodeImportCancelBtn">取消</button>
-            </div>
-        </div>
-    </div>
-
-    <div id="bulkEditOverlay" class="bulk-edit-overlay">
-        <div class="bulk-edit-card">
-            <h2 id="bulkEditTitle">批量编辑</h2>
-            <p>每行一个名称，只会修改当前类别内的项目，不会更改类别。</p>
-            <textarea id="bulkEditTextarea" spellcheck="false"></textarea>
-            <div class="bulk-edit-actions">
-                <button id="saveBulkEditBtn" class="primary">保存</button>
-                <button id="cancelBulkEditBtn">取消</button>
             </div>
         </div>
     </div>
@@ -267,12 +254,20 @@
         <div class="eaten-dialog-card">
             <h3>今天我吃了……</h3>
             <div class="eaten-select-row">
-                <select id="eatenCategorySelect" class="eaten-select">
-                    <option value="">选择类别</option>
-                </select>
-                <select id="eatenItemSelect" class="eaten-select" disabled>
-                    <option value="">选择项目</option>
-                </select>
+                <div class="eaten-select-field">
+                    <button id="eatenCategorySelectBtn" class="eaten-select-btn" type="button">
+                        <span id="eatenCategorySelectLabel" class="eaten-select-label placeholder">选择类别</span>
+                        <span class="eaten-select-caret">▾</span>
+                    </button>
+                    <div id="eatenCategoryMenu" class="category-dropdown-menu eaten-select-menu"></div>
+                </div>
+                <div class="eaten-select-field">
+                    <button id="eatenItemSelectBtn" class="eaten-select-btn" type="button" disabled>
+                        <span id="eatenItemSelectLabel" class="eaten-select-label placeholder">选择项目</span>
+                        <span class="eaten-select-caret">▾</span>
+                    </button>
+                    <div id="eatenItemMenu" class="category-dropdown-menu eaten-select-menu"></div>
+                </div>
             </div>
             <div class="eaten-dialog-actions">
                 <button id="eatenConfirmBtn" disabled>确认</button>
@@ -283,7 +278,7 @@
 
     <div id="toast" class="toast"></div>
 
-    <div class="version-label">062311</div>
+    <div class="version-label">062316</div>
 
     <script src="assets/app/app.js"></script>
 
