@@ -138,6 +138,7 @@ function resetPickCounts() {
     saveEatenCounts(eatenCounts);
     render();
     if (currentMode === 'tags') renderTagBoard();
+    renderStats();
     showToast('统计数据已归零');
 }
 
@@ -500,6 +501,8 @@ function clearDrawHistory() {
 
 var statsShowPick = true;
 var statsShowEaten = true;
+// 统计页排序：key 为 'pick' 或 'eaten'，固定按次数从高到低，不提供升序
+var statsSortKey = 'pick';
 
 function renderStats() {
     var body = document.querySelector('.stats-body');
@@ -513,7 +516,11 @@ function renderStats() {
     var sorted = items.map(function (item, i) {
         var displayName = getItemNameInCategory(item, getItemCategory(item));
         return { name: displayName, pick: pickCounts[item] || 0, eaten: eatenCounts[item] || 0, index: i };
-    }).sort(function (a, b) { return b.pick - a.pick || a.name.localeCompare(b.name, 'zh-CN'); });
+    }).sort(function (a, b) {
+        var diff = b[statsSortKey] - a[statsSortKey];
+        // 次数相同时按名称排，保证顺序稳定
+        return diff || a.name.localeCompare(b.name, 'zh-CN');
+    });
 
     var maxVal = 1;
     for (var i = 0; i < sorted.length; i++) {
@@ -523,7 +530,24 @@ function renderStats() {
         if (v > maxVal) maxVal = v;
     }
 
-    var html = '<div class="stats-chart">';
+    function sortHeader(key, label, visible) {
+        // 只有「从高到低」一种排法，所以箭头恒定是 ↓，选中与否只看 .active 的颜色。
+        // 按钮上不挂列名类：pick 是主页「抽一个」按钮的全局类，button.pick 的权重 (0,1,1)
+        // 高于 .stats-sort-btn (0,1,0)，会被它整个接管，列名只放在 data-key 里。
+        // tabindex="-1"：这两个按钮不进 Tab 顺序，键盘 Tab 只在页面里切换别的东西。
+        var cls = 'stats-sort-btn' + (statsSortKey === key ? ' active' : '');
+        // 该列被取消勾选时不显示数字，按它排序看不出顺序，所以直接禁用
+        return '<button type="button" class="' + cls + '" data-key="' + key + '" tabindex="-1"'
+            + ' title="按' + label + '从高到低排序"' + (visible ? '' : ' disabled') + '>↓</button>';
+    }
+
+    var html = '<div class="stats-chart">'
+        + '<div class="stats-head">'
+        + '<span class="stats-head-spacer"></span>'
+        + '<span class="stats-head-gap"></span>'
+        + sortHeader('pick', '抽取次数', statsShowPick)
+        + sortHeader('eaten', '就餐次数', statsShowEaten)
+        + '</div>';
     for (var i = 0; i < sorted.length; i++) {
         var entry = sorted[i];
         html += '<div class="stats-row">'
@@ -558,6 +582,15 @@ function renderStats() {
     html += '</div>';
 
     body.innerHTML = html;
+
+    // body 每次都是整块重建，表头按钮要重新绑定
+    body.querySelectorAll('.stats-sort-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            // 点已选中的列不做切换，只是保持原样
+            statsSortKey = this.dataset.key;
+            renderStats();
+        });
+    });
 }
 
 function renderDrawHistory() {
@@ -1893,7 +1926,8 @@ function cancelInlineEdit() {
 }
 
 // 进入列表内编辑
-function startEdit(index) {
+// shouldFocus=false 时不自动聚焦输入框，手机上就不会自动弹出输入法
+function startEdit(index, shouldFocus = true) {
     ignoreNextEditOutsideClick = true;
     suppressNextListAnimation = true;
     render();
@@ -1931,7 +1965,7 @@ function startEdit(index) {
         if (e.key === 'Enter') saveEdit(index);
         if (e.key === 'Escape') cancelInlineEdit();
     });
-    nameInput.focus();
+    if (shouldFocus) nameInput.focus();
     const saveBtn = li.querySelector('.save');
     const cancelBtn = li.querySelector('.cancel');
     saveBtn.addEventListener('click', function (e) {
@@ -2161,7 +2195,8 @@ function findItemRowByName(name) {
 function openTeachingEditExample() {
     const index = items.indexOf('一食 牛肉面') >= 0 ? items.indexOf('一食 牛肉面') : items.indexOf('一食 兰州拉面');
     if (index < 0) return;
-    startEdit(index);
+    // 教学第 12 步只是展示"类别也能改"，不自动聚焦，避免手机上自动弹输入法
+    startEdit(index, false);
     document.querySelector(`li.item-row[data-index="${index}"] .category-input`)?.classList.add('teaching-highlight');
 }
 
@@ -2631,6 +2666,49 @@ function closeTeachingExitDialog() {
     document.getElementById('teachingExitOverlay')?.classList.remove('show');
 }
 
+// 通用确认弹窗，样式与「退出教学？」一致，用来替代浏览器原生 confirm()。
+// 分两层：第一层说明后果，点「继续」后叠出第二层再问一次，
+// 第二层点了才真正执行——这两处都会清空/覆盖数据且不可撤销，值得多一次确认。
+let appConfirmAction = null;
+
+function openAppConfirm(options) {
+    document.getElementById('appConfirmTitle').textContent = options.title;
+    document.getElementById('appConfirmDesc').textContent = options.desc || '';
+    const okBtn = document.getElementById('appConfirmOkBtn');
+    okBtn.textContent = options.confirmText || '确定';
+    okBtn.classList.toggle('danger', options.danger !== false);
+
+    // 第二层的文案由每个调用点自己给，措辞比第一层更具体
+    document.getElementById('appConfirmFinalTitle').textContent = options.finalTitle || options.title;
+    document.getElementById('appConfirmFinalDesc').textContent = options.finalDesc || '';
+    const finalOkBtn = document.getElementById('appConfirmFinalOkBtn');
+    finalOkBtn.textContent = options.finalConfirmText || options.confirmText || '确定';
+    finalOkBtn.classList.toggle('danger', options.danger !== false);
+
+    appConfirmAction = options.onConfirm || null;
+    document.getElementById('appConfirmFinalOverlay').classList.remove('show');
+    document.getElementById('appConfirmOverlay').classList.add('show');
+}
+
+function closeAppConfirm() {
+    appConfirmAction = null;
+    document.getElementById('appConfirmFinalOverlay').classList.remove('show');
+    document.getElementById('appConfirmOverlay').classList.remove('show');
+}
+
+// 第一层点「继续」：不关窗口，只是在上面再叠一层确认框
+// （第一层留着不关，第二层的半透明遮罩会把第一层压暗，分层看得更清楚）
+function confirmAppConfirm() {
+    document.getElementById('appConfirmFinalOverlay').classList.add('show');
+}
+
+// 第二层点确认：到这里才真的执行
+function confirmAppConfirmFinal() {
+    const action = appConfirmAction;
+    closeAppConfirm();
+    if (action) action();
+}
+
 function exitTeachingMode() {
     clearTeachingHighlights();
     closeTeachingSuggestionMenu();
@@ -2768,7 +2846,7 @@ function enterWelcomePage() {
         overlay.remove();
         document.body.classList.remove('welcome-main-in');
         enableGuideAttention();
-    }, 720);
+    }, 420);
 }
 
 // ===== 事件绑定 =====
@@ -2862,8 +2940,11 @@ document.getElementById('pickBtn').addEventListener('click', pick);
 document.getElementById('toggleResultBtn').addEventListener('click', toggleResult);
 document.getElementById('normalModeBtn').addEventListener('click', () => switchMode('normal'));
 document.getElementById('tagModeBtn').addEventListener('click', () => switchMode('tags'));
-document.getElementById('statsBtn').addEventListener('click', function () {
+document.getElementById('statsBtn').addEventListener('click', function (e) {
     if (document.body.classList.contains('teaching-mode')) return;
+    e.stopPropagation();
+    document.getElementById('settingsMenu').classList.remove('open');
+    this.closest('.settings-wrap').classList.remove('open');
     renderStats();
     document.getElementById('statsOverlay').classList.add('show');
 });
@@ -2872,10 +2953,13 @@ document.getElementById('statsCloseBtn').addEventListener('click', function () {
 });
 document.getElementById('statsTogglePick').addEventListener('change', function () {
     statsShowPick = this.checked;
+    // 取消勾选时，如果当前正按这一列排序，切到另一列，避免顺序看不出依据
+    if (!statsShowPick && statsSortKey === 'pick') { statsSortKey = 'eaten'; }
     renderStats();
 });
 document.getElementById('statsToggleEaten').addEventListener('change', function () {
     statsShowEaten = this.checked;
+    if (!statsShowEaten && statsSortKey === 'eaten') { statsSortKey = 'pick'; }
     renderStats();
 });
 document.getElementById('statsOverlay').addEventListener('click', function (e) {
@@ -3074,14 +3158,32 @@ document.getElementById('settingsBtn').addEventListener('click', function (e) {
         document.getElementById('importBtn')?.classList.toggle('teaching-highlight', isOpen);
     }
 });
-document.getElementById('resetStatsBtn').addEventListener('click', function (e) {
+document.getElementById('resetStatsBtn').addEventListener('click', function () {
+    // 按钮在统计页里，统计页只能从 ☰ 菜单进，教学模式下进不来，这里再兜一层
     if (document.body.classList.contains('teaching-mode')) return;
-    e.stopPropagation();
-    document.getElementById('settingsMenu').classList.remove('open');
-    this.closest('.settings-wrap').classList.remove('open');
-    if (confirm('确认归零所有抽取次数和吃过次数？此操作不可撤销。')) {
-        resetPickCounts();
-    }
+    // 归零后统计页不关，直接刷成 0，让人看见确实清了
+    openAppConfirm({
+        title: '还原统计？',
+        desc: '所有项目的抽取次数和吃过次数都会归零。此操作不可撤销。',
+        confirmText: '继续还原',
+        finalTitle: '确定要还原统计吗？',
+        finalDesc: '点击「确认还原」后，所有抽取次数和吃过次数立即归零。',
+        finalConfirmText: '确认还原',
+        onConfirm: resetPickCounts
+    });
+});
+
+document.getElementById('appConfirmOkBtn').addEventListener('click', confirmAppConfirm);
+document.getElementById('appConfirmCancelBtn').addEventListener('click', closeAppConfirm);
+document.getElementById('appConfirmOverlay').addEventListener('click', function (e) {
+    if (e.target === this) closeAppConfirm();
+});
+document.getElementById('appConfirmFinalOkBtn').addEventListener('click', confirmAppConfirmFinal);
+// 第二层取消（按钮、点遮罩、Esc）等于整个放弃，两层一起关掉，
+// 不留第一层让人再点一次取消
+document.getElementById('appConfirmFinalBackBtn').addEventListener('click', closeAppConfirm);
+document.getElementById('appConfirmFinalOverlay').addEventListener('click', function (e) {
+    if (e.target === this) closeAppConfirm();
 });
 document.getElementById('importFileInput').addEventListener('change', function () {
     handleImportFile(this.files[0]);
@@ -3089,9 +3191,15 @@ document.getElementById('importFileInput').addEventListener('change', function (
 document.getElementById('undoImportBtn').addEventListener('click', undoImport);
 document.getElementById('mergeImportBtn').addEventListener('click', () => applyImport('merge'));
 document.getElementById('overwriteImportBtn').addEventListener('click', function () {
-    if (confirm('覆盖导入将清空当前列表，替换为导入内容。确定继续？')) {
-        applyImport('overwrite');
-    }
+    openAppConfirm({
+        title: '覆盖导入？',
+        desc: '将清空当前列表，完全替换为导入内容。此操作不可撤销。',
+        confirmText: '继续覆盖',
+        finalTitle: '确定要覆盖当前列表吗？',
+        finalDesc: '当前列表会被导入内容完全替换，替换后无法恢复。',
+        finalConfirmText: '确认覆盖',
+        onConfirm: function () { applyImport('overwrite'); }
+    });
 });
 document.getElementById('cancelImportBtn').addEventListener('click', cancelImport);
 document.getElementById('importDialogOverlay').addEventListener('click', function (e) {
@@ -3106,6 +3214,12 @@ document.getElementById('listSearchInput').addEventListener('input', function ()
     render();
 });
 document.addEventListener('keydown', function (e) {
+    // 确认弹窗在任何模式下都能用 Esc 关掉
+    // 确认弹窗在任何模式下都能用 Esc 关掉；第二层开着时一次关掉两层
+    if (e.key === 'Escape' && document.getElementById('appConfirmOverlay').classList.contains('show')) {
+        closeAppConfirm();
+        return;
+    }
     if (!document.body.classList.contains('teaching-mode')) return;
     if (e.key !== 'Enter') return;
     const nextBtn = document.getElementById('teachingNextBtn');

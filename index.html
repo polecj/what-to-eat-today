@@ -57,7 +57,6 @@
                 <div class="draw-history-header">
                     <strong>抽取历史</strong>
                     <span class="draw-history-actions">
-                        <button id="statsBtn" class="stats-btn-inline" title="抽取统计">统计</button>
                         <button id="toggleDrawHistoryBtn" class="toggle-history-btn">展开</button>
                         <button id="clearDrawHistoryBtn" class="clear-history-btn">全部删除</button>
                     </span>
@@ -114,7 +113,7 @@
                             <button class="share-code-gen-btn menu-item" id="shareCodeGenBtn" title="生成分享码">生成分享码</button>
                             <button class="share-code-imp-btn menu-item" id="shareCodeImpBtn" title="导入分享码">导入分享码</button>
                             <span class="menu-divider"></span>
-                            <button class="reset-stats-btn menu-item" id="resetStatsBtn" title="将所有项目的被抽中次数归零">还原统计</button>
+                            <button class="stats-menu-btn menu-item" id="statsBtn" title="查看抽取统计">统计</button>
                         </span>
                     </span>
                     <span id="count" class="count">共 0 项</span>
@@ -230,6 +229,29 @@
         </div>
     </div>
 
+    <div id="appConfirmOverlay" class="center-modal">
+        <div class="modal-card">
+            <div id="appConfirmTitle" class="modal-title"></div>
+            <div id="appConfirmDesc" class="modal-desc"></div>
+            <div class="modal-btn-row">
+                <button id="appConfirmOkBtn" class="modal-pill-btn danger"></button>
+                <button id="appConfirmCancelBtn" class="modal-pill-btn">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 二次确认：叠在 #appConfirmOverlay 之上，后者的半透明遮罩会把第一层压暗，形成分层 -->
+    <div id="appConfirmFinalOverlay" class="center-modal">
+        <div class="modal-card">
+            <div id="appConfirmFinalTitle" class="modal-title"></div>
+            <div id="appConfirmFinalDesc" class="modal-desc"></div>
+            <div class="modal-btn-row">
+                <button id="appConfirmFinalOkBtn" class="modal-pill-btn danger"></button>
+                <button id="appConfirmFinalBackBtn" class="modal-pill-btn">取消</button>
+            </div>
+        </div>
+    </div>
+
     <div id="tagRevealOverlay" class="tag-reveal-overlay">
         <div id="tagRevealCard" class="tag-reveal-card"></div>
     </div>
@@ -246,6 +268,9 @@
             </div>
             <div class="stats-body">
                 <p class="stats-placeholder">统计内容即将上线</p>
+            </div>
+            <div class="stats-footer">
+                <button id="resetStatsBtn" class="stats-reset-btn" title="将所有项目的抽取次数和吃过次数归零">还原统计</button>
             </div>
         </div>
     </div>
@@ -278,7 +303,7 @@
 
     <div id="toast" class="toast"></div>
 
-    <div class="version-label">062316</div>
+    <div class="version-label">062322</div>
 
     <script src="assets/app/app.js"></script>
 

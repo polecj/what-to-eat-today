@@ -8,6 +8,19 @@ html,
 body {
     height: 100%;
     overflow: hidden;
+    /* 禁用双击放大。touch-action 按"自身与祖先的交集"生效，
+       li .drag-handle 在移动端单独设了 none，交集仍是 none，拖动不受影响。 */
+    touch-action: manipulation;
+}
+
+/* 部分浏览器对祖先的 touch-action 处理不一致，可点元素上再显式声明一遍 */
+button,
+a,
+label,
+input,
+textarea,
+select {
+    touch-action: manipulation;
 }
 
 body {
@@ -43,7 +56,7 @@ body.welcome-active > .container {
 body.welcome-main-in > h1,
 body.welcome-main-in > .mode-switch,
 body.welcome-main-in > .container {
-    animation: welcome-main-grow-in 700ms ease-out forwards;
+    animation: welcome-main-grow-in 275ms ease-out forwards;
 }
 
 .welcome-overlay {
@@ -100,7 +113,6 @@ body.welcome-main-in > .container {
     color: #fff;
     font-size: 20px;
     font-weight: 800;
-    touch-action: manipulation;
     box-shadow: 0 10px 30px rgba(74, 144, 217, 0.34);
 }
 
@@ -109,7 +121,7 @@ body.welcome-main-in > .container {
 }
 
 .welcome-overlay.expand-out {
-    animation: welcome-expand-fade 700ms ease-in forwards;
+    animation: welcome-expand-fade 400ms ease-in forwards;
     pointer-events: none;
 }
 
@@ -341,7 +353,7 @@ body.teaching-mode .teaching-panel {
    教学用得到的（添加、抽一个、确定、生成分享码、全选、全展开、搜索、
    条目的 ⋯ 菜单、拖动、分类勾选框、改名、「?」）全程保持可用，
    不按步骤区别对待。 */
-body.teaching-mode #resetStatsBtn,
+body.teaching-mode #statsBtn,
 body.teaching-mode #shareCodeImpBtn,
 body.teaching-mode .draw-duration-setting,
 body.teaching-mode #iAteBtn {
@@ -1135,9 +1147,10 @@ body.teaching-mode .right-panel {
     opacity: 0.85;
 }
 
+/* 两列次数改用固定宽度，表头的 ↑↓ 用同样的宽度才能正好落在数字上方 */
 .stats-item-count {
-    flex: 0 0 auto;
-    min-width: 28px;
+    flex: 0 0 34px;
+    width: 34px;
     text-align: right;
     font-size: 13px;
     color: #8f9bb3;
@@ -1145,12 +1158,111 @@ body.teaching-mode .right-panel {
 }
 
 .stats-item-eaten {
-    flex: 0 0 auto;
-    min-width: 28px;
+    flex: 0 0 34px;
+    width: 34px;
     text-align: right;
     font-size: 13px;
     color: #58d68d;
     font-variant-numeric: tabular-nums;
+}
+
+/* 排序表头：和数据行同一套 flex 布局，吸顶在统计图上方 */
+.stats-head {
+    position: sticky;
+    top: 0;
+    /* 必须压过柱子的 z-index(1 / 2)：表头和数据行在同一个层叠上下文里，
+       两者权重相同时 DOM 靠后的行会赢，滚动时就餐次数的柱子就糊到箭头这一行上。
+       提到 5 之后表头（含不透明底色）始终盖住滚过去的行。 */
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-bottom: 6px;
+    margin-bottom: 2px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+    background: rgba(22, 33, 62, 1);
+}
+
+.stats-head-spacer {
+    flex: 0 0 130px;
+    width: 130px;
+}
+
+.stats-head-gap {
+    flex: 1;
+    min-width: 40px;
+}
+
+/* 排序表头按钮。按钮上不要挂 pick / eaten 这类裸类名：
+   pick 是主页「抽一个」按钮的全局类，button.pick 的权重 (0,1,1) 高于本规则 (0,1,0)，
+   会被它整个接管（绿底 #27ae60、20px 字号、12px/40px 内边距、margin-bottom 20px），
+   表头上就会冒出一个绿框、箭头被撑大并被挤离数字。列名只放在 data-key 里。
+   宽度和次数列同为 34px，正好落在数字上方。 */
+.stats-sort-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 34px;
+    width: 34px;
+    height: 26px;
+    margin: 0;
+    padding: 0;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.05);
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+    color: rgba(226, 232, 240, 0.72);
+    transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+
+/* 未选中的那一列才给金色 hover；选中列点它没有变化，不给反馈 */
+.stats-sort-btn:hover:not(:disabled):not(.active) {
+    color: #f6d266;
+    border-color: rgba(246, 210, 102, 0.5);
+    background: rgba(246, 210, 102, 0.1);
+}
+
+/* 箭头颜色统一规则：选中＝绿色，未选中＝灰白 */
+.stats-sort-btn.active {
+    color: #58d68d;
+    border-color: rgba(88, 214, 141, 0.5);
+    background: rgba(88, 214, 141, 0.12);
+}
+
+.stats-sort-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.35;
+}
+
+/* 这两个按钮不进 Tab 顺序（见 JS 里的 tabindex="-1"），点完也不留浏览器默认的焦点框 */
+.stats-sort-btn:focus {
+    outline: none;
+}
+
+/* 还原统计从 ☰ 菜单搬到了统计页底部 */
+.stats-footer {
+    display: flex;
+    justify-content: flex-end;
+    padding: 0 24px 18px;
+}
+
+/* 用和 button.danger 同一套红（但不能再挂 danger 类，那是个 (0,1,1) 的全局类） */
+.stats-reset-btn {
+    padding: 6px 14px;
+    border-radius: 999px;
+    border: 1px solid #e74c3c;
+    background: #e74c3c;
+    color: #fff;
+    font-size: 13px;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+}
+
+.stats-reset-btn:hover {
+    border-color: #c0392b;
+    background: #c0392b;
 }
 
 /* 今天我吃了…… */
@@ -1679,21 +1791,6 @@ button.pick:hover {
     cursor: not-allowed;
 }
 
-.stats-btn-inline {
-    padding: 2px 10px;
-    border-radius: 999px;
-    background: rgba(74, 144, 217, 0.18);
-    border-color: rgba(74, 144, 217, 0.35);
-    color: #8fbbf0;
-    font-size: 12px;
-}
-
-.stats-btn-inline:hover {
-    background: rgba(74, 144, 217, 0.3);
-    border-color: rgba(74, 144, 217, 0.55);
-    color: #b8d6ff;
-}
-
 .draw-history-list {
     display: flex;
     flex-direction: column;
@@ -2204,6 +2301,11 @@ body.tag-motion-on .mystery-tag.draw-winner {
     transition: opacity 0.15s ease, background 0.15s ease, backdrop-filter 0.15s ease, -webkit-backdrop-filter 0.15s ease, visibility 0s linear 0.15s;
 }
 
+/* 二次确认弹窗永远叠在第一次确认之上 */
+#appConfirmFinalOverlay {
+    z-index: 2010;
+}
+
 .center-modal.show {
     visibility: visible;
     opacity: 1;
@@ -2591,7 +2693,6 @@ button.pick:disabled {
     background: rgba(17, 25, 54, 0.9);
     color: #e0e0e0;
     line-height: 1;
-    touch-action: manipulation;
 }
 
 .draw-duration-stepper button:hover:not(:disabled) {
