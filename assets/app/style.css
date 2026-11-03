@@ -674,25 +674,12 @@ body.teaching-mode .right-panel {
 }
 
 .import-dialog-overlay {
-    position: fixed;
-    inset: 0;
-    display: none;
-    place-items: center;
-    background: rgba(5, 5, 12, 0.48);
-    z-index: 85;
-}
-
-.import-dialog-overlay.show {
-    display: grid;
+    --modal-layer: 85;
 }
 
 .import-dialog-card {
     width: min(520px, 86vw);
     padding: 24px 28px;
-    border-radius: 18px;
-    background: rgba(22, 33, 62, 0.97);
-    border: 1px solid #3a4a75;
-    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
     color: #ddd;
 }
 
@@ -740,25 +727,12 @@ body.teaching-mode .right-panel {
 }
 
 .share-code-overlay {
-    position: fixed;
-    inset: 0;
-    display: none;
-    place-items: center;
-    background: rgba(5, 5, 12, 0.48);
-    z-index: 86;
-}
-
-.share-code-overlay.show {
-    display: grid;
+    --modal-layer: 86;
 }
 
 .share-code-card {
     width: min(520px, 86vw);
     padding: 24px 28px;
-    border-radius: 18px;
-    background: rgba(22, 33, 62, 0.97);
-    border: 1px solid #3a4a75;
-    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
     color: #ddd;
 }
 
@@ -853,26 +827,13 @@ body.teaching-mode .right-panel {
 }
 
 .format-help-overlay {
-    position: fixed;
-    inset: 0;
-    display: none;
-    place-items: center;
-    background: rgba(5, 5, 12, 0.45);
-    z-index: 60;
-}
-
-.format-help-overlay.show {
-    display: grid;
+    --modal-layer: 60;
 }
 
 .format-help-card {
     position: relative;
     width: min(560px, 86vw);
     padding: 26px 30px;
-    border-radius: 18px;
-    background: rgba(22, 33, 62, 0.97);
-    border: 1px solid #3a4a75;
-    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
     color: #ddd;
 }
 
@@ -909,26 +870,13 @@ body.teaching-mode .right-panel {
 
 /* 抽取统计 */
 .stats-overlay {
-    position: fixed;
-    inset: 0;
-    display: none;
-    place-items: center;
-    background: rgba(5, 5, 12, 0.5);
-    z-index: 70;
-}
-
-.stats-overlay.show {
-    display: grid;
+    --modal-layer: 70;
 }
 
 .stats-card {
     width: min(640px, 90vw);
     max-height: 88vh;
     padding: 0;
-    border-radius: 18px;
-    background: rgba(22, 33, 62, 0.97);
-    border: 1px solid #3a4a75;
-    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
     color: #ddd;
     overflow: hidden;
 }
@@ -1166,25 +1114,12 @@ body.teaching-mode .right-panel {
 
 /* 今天我吃了…… */
 .eaten-dialog-overlay {
-    position: fixed;
-    inset: 0;
-    display: none;
-    place-items: center;
-    background: rgba(5, 5, 12, 0.5);
-    z-index: 75;
-}
-
-.eaten-dialog-overlay.show {
-    display: grid;
+    --modal-layer: 75;
 }
 
 .eaten-dialog-card {
     width: min(360px, 86vw);
     padding: 22px 24px;
-    border-radius: 16px;
-    background: rgba(22, 33, 62, 0.97);
-    border: 1px solid #3a4a75;
-    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
     color: #ddd;
 }
 
@@ -1812,18 +1747,22 @@ button.toggle-result:hover {
     font-size: 13px;
 }
 
+/* 所有居中弹窗共用退出教学提示的磨砂遮罩、半透明卡片及开关过渡。
+   不使用 display:none，关闭时让模糊/透明度过渡结束后再隐藏。 */
 .center-modal {
     position: fixed;
     inset: 0;
-    display: flex;
-    justify-content: center;
-    align-items: center;
+    display: grid;
+    place-items: center;
+    padding: 16px 0;
+    overflow-y: auto;
     visibility: hidden;
+    pointer-events: none;
     opacity: 0;
     background: rgba(0, 0, 0, 0);
     backdrop-filter: blur(0px);
     -webkit-backdrop-filter: blur(0px);
-    z-index: 2000;
+    z-index: var(--modal-layer, 2000);
     transition: opacity 0.15s ease, background 0.15s ease, backdrop-filter 0.15s ease, -webkit-backdrop-filter 0.15s ease, visibility 0s linear 0.15s;
 }
 
@@ -1834,6 +1773,7 @@ button.toggle-result:hover {
 
 .center-modal.show {
     visibility: visible;
+    pointer-events: auto;
     opacity: 1;
     background: rgba(0, 0, 0, 0.45);
     backdrop-filter: blur(20px);
@@ -1841,23 +1781,26 @@ button.toggle-result:hover {
     transition: opacity 0.15s ease, background 0.15s ease, backdrop-filter 0.15s ease, -webkit-backdrop-filter 0.15s ease;
 }
 
-.center-modal .modal-card {
-    min-width: 280px;
-    max-width: min(360px, 86vw);
-    padding: 24px 28px;
+.center-modal > :first-child {
     border-radius: 18px;
     background: rgba(30, 37, 51, 0.68);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
     border: 1px solid rgba(255, 255, 255, 0.12);
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
-    text-align: center;
     transform: scale(0.92);
     transition: transform 0.15s ease;
 }
 
-.center-modal.show .modal-card {
+.center-modal.show > :first-child {
     transform: scale(1);
+}
+
+.center-modal .modal-card {
+    min-width: min(280px, 86vw);
+    max-width: min(360px, 86vw);
+    padding: 24px 28px;
+    text-align: center;
 }
 
 .center-modal .modal-title {
@@ -1906,28 +1849,12 @@ button.toggle-result:hover {
 }
 
 .mock-file-overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 2100;
-    display: none;
-    align-items: center;
-    justify-content: center;
-    background: rgba(4, 4, 12, 0.48);
-    backdrop-filter: blur(18px);
-    -webkit-backdrop-filter: blur(18px);
-}
-
-.mock-file-overlay.show {
-    display: flex;
+    --modal-layer: 2100;
 }
 
 .mock-file-window {
     width: min(520px, 88vw);
     padding: 18px;
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 18px;
-    background: rgba(28, 34, 52, 0.92);
-    box-shadow: 0 22px 70px rgba(0, 0, 0, 0.52);
 }
 
 .mock-file-title {
@@ -2912,7 +2839,10 @@ li.light-list-empty {
 @media (prefers-reduced-motion: reduce) {
     .mode-switch::before,
     .mode-btn,
-    .light-list-item {
+    .light-list-item,
+    .center-modal,
+    .center-modal.show,
+    .center-modal > :first-child {
         transition: none;
     }
 }

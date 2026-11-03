@@ -2228,23 +2228,47 @@ function clearPageSwitchClasses() {
     );
 }
 
+function waitForPageAnimation(name, duration, onComplete) {
+    const panel = document.getElementById('pickerPanel');
+    let finished = false;
+    const finish = () => {
+        if (finished) return;
+        finished = true;
+        clearTimeout(fallback);
+        panel.removeEventListener('animationend', handleEnd);
+        onComplete();
+    };
+    const handleEnd = event => {
+        // 子元素的高亮等动画会冒泡，不能提前结束整个页面的入场模糊。
+        if (event.target === panel && event.animationName === name) finish();
+    };
+    panel.addEventListener('animationend', handleEnd);
+    // 后台标签页或不支持动画时兜底；正常情况下由实际动画终点完成，
+    // 不按从 JS 开始计时的固定时长移除样式，避免手机首帧延后时截断模糊。
+    const fallback = setTimeout(finish, duration + 1000);
+}
+
 function runPageSwitch(outClass, inClass, applyChange) {
     if (pageSwitching) return;
     pageSwitching = true;
     clearPageSwitchClasses();
-    document.body.classList.add('page-switching', outClass);
-
-    setTimeout(() => {
-        document.body.classList.remove(outClass);
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        try { applyChange(); } finally { pageSwitching = false; }
+        return;
+    }
+    const toHome = outClass === 'page-to-home-out';
+    waitForPageAnimation(toHome ? 'page-slide-out-right' : 'page-slide-out-left', PAGE_SWITCH_OUT_MS, () => {
+        // 保持退场末帧至数据和布局切换完毕，同一帧直接交给入场动画，
+        // 不在中间强制绘制没有动画/filter 的清晰页面。
         applyChange();
-        void document.body.offsetWidth;
-        document.body.classList.add(inClass);
-
-        setTimeout(() => {
+        waitForPageAnimation(toHome ? 'page-slide-in-left' : 'page-slide-in-right', PAGE_SWITCH_IN_MS, () => {
             clearPageSwitchClasses();
             pageSwitching = false;
-        }, PAGE_SWITCH_IN_MS);
-    }, PAGE_SWITCH_OUT_MS);
+        });
+        document.body.classList.remove(outClass);
+        document.body.classList.add(inClass);
+    });
+    document.body.classList.add('page-switching', outClass);
 }
 
 function transitionToTeachingMode() {
