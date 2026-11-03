@@ -9,28 +9,19 @@
 
 </head>
 
-<body class="welcome-active">
-    <div id="welcomeOverlay" class="welcome-overlay">
-        <div class="welcome-content">
-            <h1>欢迎来到这个网站！</h1>
-            <p>这里可以帮你整理想吃的选项，按类别管理待抽列表。</p>
-            <p>你可以随机抽一个答案，也可以切到标签模式，让选择过程更有一点仪式感。</p>
-            <p class="welcome-note">如果是第一次使用，进入后可以点击“教学💡”快速上手。</p>
-            <button id="enterWelcomeBtn" class="welcome-enter-btn">进入</button>
-        </div>
-    </div>
-
+<body>
     <button id="backFromTeachingBtn" class="back-from-teaching">← 返回</button>
 
     <h1>是啊吃啥呢</h1>
     <div id="teachingSubtitle" class="teaching-subtitle">教学页面</div>
 
-    <div class="mode-switch">
-        <button id="normalModeBtn" class="mode-btn active">普通抽取</button>
-        <button id="tagModeBtn" class="mode-btn">标签抽取</button>
-    </div>
+    <nav class="mode-switch" aria-label="选择清单" data-section="picker">
+        <button id="wishlistSectionBtn" class="mode-btn" type="button" data-section="wishlist" aria-controls="lightListPanel" aria-pressed="false">之后想吃</button>
+        <button id="pickerSectionBtn" class="mode-btn active" type="button" data-section="picker" aria-controls="pickerPanel" aria-pressed="true">是啊吃什么</button>
+        <button id="snacksSectionBtn" class="mode-btn" type="button" data-section="snacks" aria-controls="lightListPanel" aria-pressed="false">饭后加餐</button>
+    </nav>
 
-    <div class="container">
+    <div id="pickerPanel" class="container">
 
         <!-- 左侧：控件区 -->
         <div class="left-panel normal-mode-panel">
@@ -38,13 +29,13 @@
             <div class="row">
                 <div class="item-input-group">
                     <button id="formatHelpBtn" class="format-help" title="输入格式说明">?</button>
-                    <span class="category-format-hint">请输入两个汉字</span>
+                    <span class="category-format-hint">类别可留空，不含空格</span>
                     <button id="newUserGuideBtn" class="new-user-guide" title="进入教学页面">教学💡</button>
                     <button id="neverShowGuideBtn" class="never-show-guide" title="以后不再显示新手教学提示">不再提示</button>
-                    <input id="categoryInput" class="category-input" type="text" placeholder="空则无类别">
+                    <input id="categoryInput" class="category-input" type="text" placeholder="空则无类别" maxlength="20" aria-label="类别，可留空，最多20字">
                     <button id="categoryDropdownBtn" class="category-dropdown-btn" title="从已有类别中选择">▾</button>
                     <span class="input-separator"></span>
-                    <input id="itemInput" class="name-input" type="text" placeholder="名称，回车添加" autofocus>
+                    <input id="itemInput" class="name-input" type="text" placeholder="名称，回车添加" maxlength="80" aria-label="项目名称，最多80字" autofocus>
                 </div>
                 <button id="addBtn" class="primary">添加</button>
             </div>
@@ -68,24 +59,13 @@
                 <div class="teaching-panel-card">
                     <div id="teachingKicker" class="teaching-kicker">0</div>
                     <h2 id="teachingTitle">欢迎进入教学页面</h2>
-                    <p id="teachingDesc">这里会用一个独立的空列表带你熟悉添加、修改、删除和导入示例。点击下一步开始操作。</p>
+                    <p id="teachingDesc">这里使用独立的教学列表演示“是啊吃什么”的分类抽取与管理，不影响真实记录；退出后可切换“之后想吃”和“饭后加餐”记录其他想吃的东西。</p>
                     <div class="teaching-actions">
                         <button id="teachingPrevBtn" class="teaching-prev-btn">上一步</button>
                         <button id="teachingNextBtn" class="teaching-next-btn">下一步</button>
                     </div>
                 </div>
             </aside>
-        </div>
-
-        <!-- 第二种：标签抽取 -->
-        <div id="tagModePanel" class="tag-mode-panel">
-            <div class="tag-tools">
-                <button id="pauseTagsBtn" class="pause-tags">让标签动起来！</button>
-                <button id="drawTagBtn" class="draw-tag">随机抽取</button>
-                <label class="motion-speed">速度 <input id="motionSpeedInput" type="range" min="1" max="8" step="0.5" value="4.5"></label>
-                <span class="tag-mode-hint">增删改条目请至普通模式</span>
-            </div>
-            <div id="tagBoard" class="tag-board"></div>
         </div>
 
         <!-- 右侧：待抽列表 -->
@@ -98,7 +78,7 @@
                     <span class="settings-wrap menu-wrap">
                         <button class="settings-btn menu-btn" id="settingsBtn" title="列表设置">☰</button>
                         <span id="settingsMenu" class="settings-menu menu-dropdown">
-                            <div class="draw-duration-setting menu-control" title="普通模式抽取动画时长">
+                            <div class="draw-duration-setting menu-control" title="抽取动画时长">
                                 <span>抽取时间</span>
                                 <span class="draw-duration-stepper">
                                     <button id="drawDurationMinusBtn" type="button" aria-label="减少抽取时间">−</button>
@@ -132,6 +112,24 @@
         </div>
 
     </div>
+
+    <section id="lightListPanel" class="light-list-panel" aria-labelledby="lightListTitle" hidden>
+        <header class="light-list-header">
+            <h2 id="lightListTitle">之后想吃</h2>
+            <span id="lightListCount" class="light-list-count">共 0 项</span>
+        </header>
+        <p id="lightListDescription" class="light-list-description">记下之后想吃的，按你的心意排序。</p>
+        <form id="lightListForm" class="light-list-form">
+            <label class="visually-hidden" for="lightListInput">添加清单项目，最多80字</label>
+            <input id="lightListInput" type="text" maxlength="80" placeholder="想吃什么？回车添加" autocomplete="off" aria-describedby="lightListError">
+            <button class="primary" type="submit">添加</button>
+        </form>
+        <p id="lightListError" class="light-list-error" role="alert"></p>
+        <p id="lightListSortHint" class="light-list-sort-hint">电脑拖动条目排序；手机长按左侧手柄拖动，也可使用上移、下移按钮。</p>
+        <ul id="lightListItems" class="light-list-items" aria-describedby="lightListSortHint"></ul>
+        <p id="lightListStatus" class="visually-hidden" role="status" aria-live="polite"></p>
+        <p id="lightListStorageHint" class="light-list-storage-hint">两份清单各自保存在当前浏览器，暂不包含在主列表的导出或分享码中；清除浏览器数据会丢失，请自行备份重要内容。</p>
+    </section>
 
     <p id="backupHint" class="backup-hint">建议使用完毕后导出分享码备份，以免数据丢失</p>
 
@@ -185,9 +183,10 @@
             <button id="formatHelpClose" class="format-help-close" title="关闭">×</button>
             <h2>输入格式说明</h2>
             <p>添加项目时，输入框分为“类别”和“名称”两部分。</p>
-            <p><strong>类别</strong> 最多输入两个汉字；不填也没关系，项目会放到 <strong>未分类</strong> 里。</p>
-            <p><strong>名称</strong> 是实际待抽内容。保存时如果填写了类别，系统会自动保存为 <strong>类别 名称</strong>，中间自动加一个空格。</p>
-            <p>例如类别填 <strong>康一</strong>、名称填 <strong>牛肉面</strong>，会保存为 <strong>康一 牛肉面</strong>，并归到 <strong>康一</strong> 类。</p>
+            <p><strong>类别</strong> 可留空；填写时为 <strong>1–20 字</strong>，只支持汉字、字母和数字，<strong>不能含空格</strong>。留空的项目放到 <strong>未分类</strong> 里。</p>
+            <p><strong>名称</strong> 最多 <strong>80 字</strong>，可含空格和常用符号，如括号、短横线、间隔号等。</p>
+            <p>有类别时，保存格式为 <strong>类别 名称</strong>，用第一个空格区分类别和名称；名称里其余空格会保留。例如 <strong>第一食堂 牛肉面（少辣）</strong> 会归到 <strong>第一食堂</strong> 类。</p>
+            <p>未分类且名称含空格时，保存内容会自动带上 <strong>未分类</strong> 前缀（如 <strong>未分类 Burger King</strong>），避免把名称误认为类别；名称不含空格时仍直接保存名称。平时只需把类别框留空，无须手动输入前缀。</p>
             <p>同一类别的项目会自动放到同一类里。</p>
         </div>
     </div>
@@ -252,10 +251,6 @@
         </div>
     </div>
 
-    <div id="tagRevealOverlay" class="tag-reveal-overlay">
-        <div id="tagRevealCard" class="tag-reveal-card"></div>
-    </div>
-
     <div id="statsOverlay" class="stats-overlay">
         <div class="stats-card">
             <div class="stats-header">
@@ -303,9 +298,11 @@
 
     <div id="toast" class="toast"></div>
 
-    <div class="version-label">062322</div>
+    <div class="version-label">110301</div>
 
+    <script src="assets/app/data.js"></script>
     <script src="assets/app/app.js"></script>
+    <script src="assets/app/sections.js"></script>
 
 
 </body>

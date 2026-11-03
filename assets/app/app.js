@@ -17,6 +17,9 @@ const WEIGHT_OPTIONS = [
     { value: 'more', label: '更多出现' },
 ];
 const UNCATEGORIZED = '未分类';
+const LEGACY_STORAGE = (() => { try { return JSON.parse(localStorage.getItem(STORAGE_KEY))?.version !== 2; } catch { return true; } })();
+const migrateKey = item => LEGACY_STORAGE ? FoodData.upgradeItem(item) : item;
+
 
 // 从 localStorage 读取
 function loadItems() {
@@ -25,7 +28,7 @@ function loadItems() {
         if (!raw) return [];
         const parsed = JSON.parse(raw);
         const list = Array.isArray(parsed) ? parsed : parsed?.items;
-        return Array.isArray(list) ? list.filter(item => typeof item === 'string').map(item => item.trim()).filter(Boolean) : [];
+        return Array.isArray(list) ? list.filter(item => typeof item === 'string').map(item => migrateKey(item.trim())).filter(Boolean) : [];
     } catch { return []; }
 }
 
@@ -36,7 +39,7 @@ function isTeachingStorageActive() {
 // 写入 localStorage
 function saveItems(items) {
     if (isTeachingStorageActive()) return;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ version: 2, items }));
 }
 
 function loadCategoryOrder() {
@@ -80,7 +83,7 @@ function loadDrawHistory() {
         const raw = localStorage.getItem(DRAW_HISTORY_KEY);
         if (!raw) return [];
         const parsed = JSON.parse(raw);
-        return Array.isArray(parsed) ? parsed.filter(item => typeof item === 'string').map(item => item.trim()).filter(Boolean) : [];
+        return Array.isArray(parsed) ? parsed.filter(item => typeof item === 'string').map(item => migrateKey(item.trim())).filter(Boolean) : [];
     } catch { return []; }
 }
 
@@ -94,7 +97,7 @@ function loadPickCounts() {
         const raw = localStorage.getItem(PICK_COUNTS_KEY);
         if (!raw) return {};
         const parsed = JSON.parse(raw);
-        return (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed : {};
+        return (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? Object.fromEntries(Object.entries(parsed).map(([key, value]) => [migrateKey(key), value])) : {};
     } catch { return {}; }
 }
 
@@ -115,7 +118,7 @@ function loadEatenCounts() {
         var raw = localStorage.getItem(EATEN_COUNTS_KEY);
         if (!raw) return {};
         var parsed = JSON.parse(raw);
-        return (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed : {};
+        return (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? Object.fromEntries(Object.entries(parsed).map(([key, value]) => [migrateKey(key), value])) : {};
     } catch { return {}; }
 }
 
@@ -137,7 +140,6 @@ function resetPickCounts() {
     savePickCounts(pickCounts);
     saveEatenCounts(eatenCounts);
     render();
-    if (currentMode === 'tags') renderTagBoard();
     renderStats();
     showToast('统计数据已归零');
 }
@@ -161,7 +163,7 @@ function loadDrawWeights() {
         const raw = localStorage.getItem(DRAW_WEIGHTS_KEY);
         if (!raw) return {};
         const parsed = JSON.parse(raw);
-        return (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed : {};
+        return (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? Object.fromEntries(Object.entries(parsed).map(([key, value]) => [migrateKey(key), value])) : {};
     } catch { return {}; }
 }
 
@@ -214,16 +216,6 @@ let uncheckedCategories = loadUncheckedCategories();
 let autoExpandedCategory = '';
 let resultHidden = false;
 let latestResultText = '';
-let currentMode = 'normal';
-let tagExpandedCategories = [];
-let tagLayout = [];
-let tagMotionOn = false;
-let tagMotionFrame = null;
-let tagInertiaOn = false;
-let tagInertiaStart = 0;
-let lastMotionTime = 0;
-let tagMotionSpeed = 4.5;
-let tagDrawRunning = false;
 let pendingImportData = null;
 let undoImportState = null;
 let exportReminderTimer = null;
@@ -260,11 +252,12 @@ let guideAttentionDismissed = false;
 let guideTipFadeTimer = null;
 
 function getItemCategory(item) {
-    const val = item.trim();
-    if (val.length > 2 && /\s/.test(val[2])) {
-        return val.slice(0, 2);
-    }
-    return UNCATEGORIZED;
+    return FoodData.splitItem(item).category;
+}
+
+function getItemDisplay(item) {
+    const parts = FoodData.splitItem(item);
+    return parts.category === UNCATEGORIZED ? parts.name : item;
 }
 
 function getOrderedCategories(categories) {
@@ -343,6 +336,7 @@ function moveItemWithinCategory(fromIndex, toIndex, insertAfter = false) {
     if (fromPos === insertPos) return false;
     orderedCategoryItems.splice(insertPos, 0, moved);
 
+    cancelPick();
     let nextCategoryItem = 0;
     items = items.map(item => {
         if (getItemCategory(item) !== category) return item;
@@ -446,13 +440,12 @@ function openItemPopover(index, buttonEl) {
             if (action === 'edit') { closeItemPopover(); startEdit(index); return; }
             if (action === 'delete') {
                 closeItemPopover();
+                cancelPick();
                 items.splice(index, 1);
                 sortItems(false);
-                tagLayout = [];
                 suppressNextListAnimation = true;
                 render();
                 if (document.body.classList.contains('teaching-mode')) setTeachingStep(teachingStep);
-                if (currentMode === 'tags') renderTagBoard();
                 markListChanged();
                 return;
             }
@@ -610,7 +603,7 @@ function renderDrawHistory() {
     }
     list.innerHTML = drawHistory.map((item, index) => `
 <li class="draw-history-item">
-  <span>${escapeHtml(item)}</span>
+  <span>${escapeHtml(getItemDisplay(item))}</span>
   <button class="delete-history-btn" data-index="${index}" title="删除这条历史">×</button>
 </li>`).join('');
     list.querySelectorAll('.delete-history-btn').forEach(btn => {
@@ -640,47 +633,27 @@ function updateDrawScopeAllButton() {
 }
 
 function toggleAllDrawCategories() {
+    cancelPick();
     const categories = getAllCategories();
     if (categories.length === 0) return;
     uncheckedCategories = areAllDrawCategoriesEnabled() ? [...categories] : [];
     saveUncheckedCategories(uncheckedCategories);
-    clearTagDrawHighlight();
-    if (currentMode === 'tags' && getDrawableItems().length === 0) stopTagMotion(false);
     render();
-    if (currentMode === 'tags') renderTagBoard();
 }
 
 function toggleCategoryDrawEnabled(category) {
+    cancelPick();
     if (isCategoryDrawEnabled(category)) {
         uncheckedCategories.push(category);
     } else {
         uncheckedCategories = uncheckedCategories.filter(item => item !== category);
     }
     saveUncheckedCategories(uncheckedCategories);
-    clearTagDrawHighlight();
-    if (currentMode === 'tags' && getDrawableItems().length === 0) stopTagMotion(false);
     render();
-    if (currentMode === 'tags') renderTagBoard();
 }
 
 function isCategoryCollapsed(category) {
-    if (currentMode === 'tags') {
-        return !tagExpandedCategories.includes(category);
-    }
     return collapsedCategories.includes(category);
-}
-
-function toggleTagCategory(category) {
-    if (tagExpandedCategories.includes(category)) {
-        collapseCategoryWithAnimation(category, () => {
-            tagExpandedCategories = tagExpandedCategories.filter(item => item !== category);
-            render();
-        });
-    } else {
-        tagExpandedCategories.push(category);
-        categoriesToAnimate.add(category);
-        render();
-    }
 }
 
 function collapseCategoryWithAnimation(category, afterCollapse) {
@@ -694,11 +667,6 @@ function collapseCategoryWithAnimation(category, afterCollapse) {
 }
 
 function toggleCategory(category) {
-    if (currentMode === 'tags') {
-        toggleTagCategory(category);
-        return;
-    }
-
     if (!isCategoryCollapsed(category)) {
         collapseCategoryWithAnimation(category, () => {
             collapsedCategories.push(category);
@@ -799,319 +767,6 @@ function toggleResult() {
     }
 }
 
-function flashTagDrawButton() {
-    const drawBtn = document.getElementById('drawTagBtn');
-    if (!drawBtn) return;
-    drawBtn.classList.remove('tag-draw-attention');
-    void drawBtn.offsetWidth;
-    drawBtn.classList.add('tag-draw-attention');
-}
-
-function switchMode(mode) {
-    currentMode = mode;
-    document.body.classList.toggle('tag-mode', mode === 'tags');
-    document.body.classList.toggle('normal-mode', mode === 'normal');
-    document.getElementById('normalModeBtn').classList.toggle('active', mode === 'normal');
-    document.getElementById('tagModeBtn').classList.toggle('active', mode === 'tags');
-    document.getElementById('tagRevealOverlay').classList.remove('show');
-    document.querySelector('.right-panel').classList.remove('drawer-open');
-
-    if (mode === 'tags') {
-        tagExpandedCategories = [];
-        shuffleTags();
-        flashTagDrawButton();
-    } else {
-        stopTagMotion(false);
-    }
-    render();
-}
-
-function randomBetween(min, max) {
-    return min + Math.random() * (max - min);
-}
-
-function createTagLayout() {
-    const isMobile = window.matchMedia?.('(max-width: 640px)').matches;
-    tagLayout = items.map((_, index) => ({
-        index,
-        left: isMobile ? randomBetween(4, 78) : randomBetween(16, 70),
-        top: isMobile ? randomBetween(6, 86) : randomBetween(16, 68),
-        rotate: isMobile ? randomBetween(-24, 24) : randomBetween(-38, 38),
-        scale: isMobile ? randomBetween(0.78, 1.05) : randomBetween(0.92, 1.2),
-        hue: Math.floor(randomBetween(165, 285)),
-        z: index + Math.floor(randomBetween(0, 20)),
-        vx: randomBetween(-90, 90) || 55,
-        vy: randomBetween(-90, 90) || -55
-    }));
-}
-
-function applyTagLayout() {
-    const board = document.getElementById('tagBoard');
-    if (!board) return;
-    tagLayout.forEach(layout => {
-        const tag = board.querySelector(`.mystery-tag[data-index="${layout.index}"]`);
-        if (!tag) return;
-        tag.style.left = `${layout.left}%`;
-        tag.style.top = `${layout.top}%`;
-        tag.style.transform = `rotate(${layout.rotate}deg) scale(${layout.scale})`;
-        tag.style.zIndex = layout.z;
-        tag.style.setProperty('--tag-hue', layout.hue);
-    });
-}
-
-function renderTagBoard() {
-    const board = document.getElementById('tagBoard');
-    if (!board) return;
-    if (items.length === 0) {
-        board.innerHTML = '<div class="tag-empty"><strong>还没有标签</strong><span>从左侧箭头添加项目，或打开右侧列表导入。</span></div>';
-        return;
-    }
-    if (tagLayout.length !== items.length) createTagLayout();
-    board.innerHTML = tagLayout.map(layout => {
-        const disabled = !isCategoryDrawEnabled(getItemCategory(items[layout.index] || ''));
-        return `
-<button class="mystery-tag${disabled ? ' draw-disabled' : ''}" data-index="${layout.index}" style="left:${layout.left}%; top:${layout.top}%; transform: rotate(${layout.rotate}deg) scale(${layout.scale}); z-index:${layout.z}; --tag-hue:${layout.hue};" ${disabled ? 'disabled' : ''}>?</button>
-    `;
-    }).join('');
-
-    board.querySelectorAll('.mystery-tag:not(.draw-disabled)').forEach(tag => {
-        tag.addEventListener('click', function (e) {
-            e.stopPropagation();
-            revealTag(parseInt(this.dataset.index));
-        });
-    });
-}
-
-function shuffleTags() {
-    const shouldKeepMoving = currentMode === 'tags' && tagMotionOn;
-    stopTagMotion();
-    clearTagDrawHighlight();
-    createTagLayout();
-    renderTagBoard();
-    if (shouldKeepMoving) startTagMotion();
-}
-
-function startTagMotion() {
-    if (tagMotionOn || getDrawableItems().length === 0) return;
-    tagInertiaOn = false;
-    tagInertiaStart = 0;
-    if (tagMotionFrame) cancelAnimationFrame(tagMotionFrame);
-    tagMotionOn = true;
-    document.body.classList.add('tag-motion-on');
-    const pauseBtn = document.getElementById('pauseTagsBtn');
-    if (pauseBtn) pauseBtn.textContent = '暂停';
-    lastMotionTime = 0;
-    tagMotionFrame = requestAnimationFrame(stepTagMotion);
-}
-
-function stopTagMotion(withInertia = false) {
-    tagMotionOn = false;
-    document.body.classList.remove('tag-motion-on');
-    const pauseBtn = document.getElementById('pauseTagsBtn');
-    if (pauseBtn) pauseBtn.textContent = '让标签动起来！';
-    if (tagMotionFrame) cancelAnimationFrame(tagMotionFrame);
-    tagMotionFrame = null;
-
-    if (withInertia && items.length > 0) {
-        tagInertiaOn = true;
-        tagInertiaStart = 0;
-        lastMotionTime = 0;
-        tagMotionFrame = requestAnimationFrame(stepTagInertia);
-        return;
-    }
-
-    tagInertiaOn = false;
-    tagInertiaStart = 0;
-    lastMotionTime = 0;
-}
-
-function toggleTagPause() {
-    if (tagMotionOn) {
-        stopTagMotion(true);
-    } else {
-        startTagMotion();
-    }
-}
-
-function moveTagLayout(dt, speedScale = 1) {
-    tagLayout.forEach(layout => {
-        if (!isCategoryDrawEnabled(getItemCategory(items[layout.index] || ''))) return;
-        layout.left += layout.vx * dt * tagMotionSpeed * speedScale / 10;
-        layout.top += layout.vy * dt * tagMotionSpeed * speedScale / 10;
-
-        if (layout.left <= 2) {
-            layout.left = 2;
-            layout.vx = Math.abs(layout.vx);
-        } else if (layout.left >= 86) {
-            layout.left = 86;
-            layout.vx = -Math.abs(layout.vx);
-        }
-
-        if (layout.top <= 4) {
-            layout.top = 4;
-            layout.vy = Math.abs(layout.vy);
-        } else if (layout.top >= 84) {
-            layout.top = 84;
-            layout.vy = -Math.abs(layout.vy);
-        }
-    });
-}
-
-function stepTagMotion(timestamp) {
-    if (!tagMotionOn) return;
-    if (!lastMotionTime) lastMotionTime = timestamp;
-    const dt = Math.min((timestamp - lastMotionTime) / 1000, 0.04);
-    lastMotionTime = timestamp;
-
-    moveTagLayout(dt);
-    applyTagLayout();
-    tagMotionFrame = requestAnimationFrame(stepTagMotion);
-}
-
-function stepTagInertia(timestamp) {
-    if (!tagInertiaOn) return;
-    if (!tagInertiaStart) tagInertiaStart = timestamp;
-    if (!lastMotionTime) lastMotionTime = timestamp;
-
-    const elapsed = timestamp - tagInertiaStart;
-    const progress = Math.min(elapsed / 720, 1);
-    const easing = Math.pow(1 - progress, 2);
-    const dt = Math.min((timestamp - lastMotionTime) / 1000, 0.04);
-    lastMotionTime = timestamp;
-
-    moveTagLayout(dt, easing);
-    applyTagLayout();
-
-    if (progress < 1) {
-        tagMotionFrame = requestAnimationFrame(stepTagInertia);
-        return;
-    }
-
-    tagInertiaOn = false;
-    tagInertiaStart = 0;
-    lastMotionTime = 0;
-    tagMotionFrame = null;
-}
-
-function clearTagDrawHighlight() {
-    document.querySelectorAll('.mystery-tag.draw-flash, .mystery-tag.draw-winner')
-        .forEach(tag => tag.classList.remove('draw-flash', 'draw-winner'));
-}
-
-function drawRandomTag() {
-    const drawableItems = getDrawableItems();
-    if (tagDrawRunning) return;
-    if (drawableItems.length === 0) {
-        const overlay = document.getElementById('tagRevealOverlay');
-        const card = document.getElementById('tagRevealCard');
-        hideTagReveal();
-        card.textContent = '⚠️ 列表为空';
-        card.style.setProperty('--tag-hue', 42);
-        card.style.transform = '';
-        overlay.classList.add('show');
-        return;
-    }
-    hideTagReveal();
-    clearTagDrawHighlight();
-    tagDrawRunning = true;
-    const drawBtn = document.getElementById('drawTagBtn');
-    drawBtn.disabled = true;
-    drawBtn.textContent = '抽取中…';
-
-    const totalRolls = 14 + Math.floor(Math.random() * 8);
-    let roll = 0;
-    let lastIndex = -1;
-
-    function flashNext() {
-        clearTagDrawHighlight();
-        let picked;
-        do {
-            picked = weightedDrawablePick();
-            if (!picked) { picked = drawableItems[0]; break; }
-        } while (picked.index === lastIndex && drawableItems.length > 1);
-        lastIndex = picked.index;
-
-        const tag = document.querySelector(`.mystery-tag[data-index="${lastIndex}"]`);
-        if (tag) tag.classList.add('draw-flash');
-
-        roll++;
-        if (roll >= totalRolls) {
-            clearTagDrawHighlight();
-            const winner = document.querySelector(`.mystery-tag[data-index="${lastIndex}"]`);
-            if (winner) winner.classList.add('draw-winner');
-            tagDrawRunning = false;
-            drawBtn.disabled = false;
-            drawBtn.textContent = '随机抽取';
-            setTimeout(() => revealTag(lastIndex, true), 280);
-            return;
-        }
-
-        const progress = roll / totalRolls;
-        const delay = 45 + progress * 130;
-        setTimeout(flashNext, delay);
-    }
-
-    flashNext();
-}
-
-function revealTag(index, shouldRecord = false) {
-    if (!isCategoryDrawEnabled(getItemCategory(items[index] || ''))) return;
-    const overlay = document.getElementById('tagRevealOverlay');
-    const card = document.getElementById('tagRevealCard');
-    const layout = tagLayout.find(item => item.index === index);
-    clearTagDrawHighlight();
-    document.querySelectorAll('.mystery-tag.revealing').forEach(tag => tag.classList.remove('revealing'));
-    const sourceTag = document.querySelector(`.mystery-tag[data-index="${index}"]`);
-
-    function showCard() {
-        card.textContent = items[index] || '';
-        card.style.setProperty('--tag-hue', layout ? layout.hue : 220);
-        card.style.transform = layout ? `rotate(${layout.rotate}deg)` : '';
-        overlay.classList.remove('dimming');
-        overlay.classList.add('show');
-        if (shouldRecord) { newItemsUntilNextDraw.clear(); addDrawHistory(items[index] || ''); incrementPickCount(items[index] || ''); }
-    }
-
-    if (!sourceTag) {
-        showCard();
-        return;
-    }
-
-    sourceTag.classList.add('revealing');
-    overlay.classList.add('dimming');
-    const rect = sourceTag.getBoundingClientRect();
-    const clone = document.createElement('button');
-    clone.className = 'tag-fly-clone';
-    clone.textContent = '?';
-    clone.style.left = `${rect.left}px`;
-    clone.style.top = `${rect.top}px`;
-    clone.style.width = `${rect.width}px`;
-    clone.style.height = `${rect.height}px`;
-    clone.style.setProperty('--tag-hue', layout ? layout.hue : 220);
-    clone.style.transform = layout ? `rotate(${layout.rotate}deg)` : '';
-    document.body.appendChild(clone);
-
-    requestAnimationFrame(() => {
-        clone.classList.add('to-center');
-        clone.style.left = '50%';
-        clone.style.top = '50%';
-        clone.style.transform = layout ? `translate(-50%, -50%) rotate(${layout.rotate}deg) scale(1.35)` : 'translate(-50%, -50%) scale(1.35)';
-    });
-
-    setTimeout(() => {
-        clone.remove();
-        showCard();
-    }, 260);
-}
-
-function hideTagReveal() {
-    const overlay = document.getElementById('tagRevealOverlay');
-    const card = document.getElementById('tagRevealCard');
-    overlay.classList.remove('show', 'dimming');
-    card.style.transform = '';
-    document.querySelectorAll('.mystery-tag.revealing').forEach(tag => tag.classList.remove('revealing'));
-}
-
 function showExportReminder() {
     if (undoImportState) return;
     const reminder = document.getElementById('exportReminder');
@@ -1179,6 +834,7 @@ function createImportUndoSnapshot() {
 
 function undoImport() {
     if (!undoImportState) return;
+    cancelPick();
     items = [...undoImportState.items];
     categoryOrder = [...undoImportState.categoryOrder];
     collapsedCategories = [...undoImportState.collapsedCategories];
@@ -1189,19 +845,16 @@ function undoImport() {
     undoImportState = null;
     document.getElementById('listSearchInput').value = listSearchQuery;
     hideImportUndoPrompt();
+    saveItems(items);
+    saveCategoryOrder(categoryOrder);
+    saveCollapsedCategories(collapsedCategories);
+    saveUncheckedCategories(uncheckedCategories);
     updateExportStatus();
-    tagLayout = [];
     render();
-    if (currentMode === 'tags') renderTagBoard();
 }
 
 function createExportBlob() {
-    const data = {
-        version: 1,
-        exportedAt: new Date().toISOString(),
-        items,
-        categoryOrder
-    };
+    const data = { ...FoodData.exportData(items, categoryOrder), exportedAt: new Date().toISOString() };
     return new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
 }
 
@@ -1226,35 +879,7 @@ function backupBeforeImport() {
 }
 
 function parseImportData(text) {
-    const trimmed = text.trim();
-
-    // 新格式：每行一个项目（不以 { 开头）
-    if (!trimmed.startsWith('{')) {
-        const importedItems = trimmed.split('\n').map(line => line.trim()).filter(Boolean);
-        if (importedItems.length === 0) throw new Error('导入的列表为空');
-        const seen = {};
-        const importedOrder = [];
-        importedItems.forEach(item => {
-            const cat = getItemCategory(item);
-            if (!seen[cat]) { seen[cat] = true; importedOrder.push(cat); }
-        });
-        return { items: importedItems, categoryOrder: importedOrder };
-    }
-
-    // 旧 JSON 格式（兼容）
-    const parsed = JSON.parse(text);
-    const rawItems = Array.isArray(parsed) ? parsed : parsed?.items;
-    if (!Array.isArray(rawItems)) throw new Error('导入文件里没有待抽列表');
-
-    const importedItems = rawItems
-        .filter(item => typeof item === 'string')
-        .map(item => item.trim())
-        .filter(Boolean);
-    if (importedItems.length === 0) throw new Error('导入文件里的列表为空');
-
-    const rawOrder = Array.isArray(parsed?.categoryOrder) ? parsed.categoryOrder : [];
-    const importedOrder = rawOrder.filter(item => typeof item === 'string').map(item => item.trim()).filter(Boolean);
-    return { items: importedItems, categoryOrder: importedOrder };
+    return FoodData.parseImport(text);
 }
 
 function getImportSummary(importData) {
@@ -1382,10 +1007,8 @@ function applyImport(mode) {
     saveItems(items);
     cleanupCollapsedCategories(buildGroups().map(group => group.category));
     pendingImportData = null;
-    tagLayout = [];
     document.getElementById('importDialogOverlay').classList.remove('show');
     render();
-    if (currentMode === 'tags') renderTagBoard();
     markListChanged();
     showImportUndoPrompt();
     showToast(formatImportResultToast(summary, mode));
@@ -1435,7 +1058,7 @@ function decodeShareCode(code) {
 }
 
 function openShareCodeView() {
-    var code = encodeShareCode(items.join('\n'));
+    var code = encodeShareCode(JSON.stringify(FoodData.exportData(items, categoryOrder)));
     var textarea = document.getElementById('shareCodeViewTextarea');
     textarea.value = code;
     textarea.classList.remove('teaching-empty');
@@ -1512,9 +1135,6 @@ function getAllCategories() {
 function areAllCategoriesExpanded() {
     const categories = getAllCategories();
     if (categories.length === 0) return true;
-    if (currentMode === 'tags') {
-        return categories.every(category => tagExpandedCategories.includes(category));
-    }
     return categories.every(category => !collapsedCategories.includes(category));
 }
 
@@ -1543,17 +1163,7 @@ function toggleAllCategories() {
     const categories = getAllCategories();
     const allExpanded = areAllCategoriesExpanded();
 
-    if (currentMode === 'tags') {
-        if (allExpanded) {
-            collapseCategoriesWithAnimation(categories, () => {
-                tagExpandedCategories = [];
-                render();
-            });
-        } else {
-            tagExpandedCategories = categories;
-            render();
-        }
-    } else if (allExpanded) {
+    if (allExpanded) {
         collapseCategoriesWithAnimation(categories, () => {
             collapsedCategories = categories;
             saveCollapsedCategories(collapsedCategories);
@@ -1572,16 +1182,19 @@ function renameCategory(oldCategory) {
     const raw = prompt(`将分类“${oldCategory}”重命名为：`, oldCategory === UNCATEGORIZED ? '' : oldCategory);
     if (raw === null) return;
     const nextCategory = normalizeCategory(raw.trim());
-    if (!nextCategory || nextCategory.length !== 2) {
-        alert('分类名称必须是两个汉字');
+    if (!nextCategory || FoodData.validateCategory(nextCategory)) {
+        alert(FoodData.validateCategory(nextCategory) || '请填写类别名称');
         return;
     }
     if (nextCategory === oldCategory) return;
 
+    cancelPick();
     items = items.map(item => {
         if (getItemCategory(item) !== oldCategory) return item;
         const name = getItemNameInCategory(item, oldCategory);
-        return buildItemValue(nextCategory, name);
+        const nextItem = buildItemValue(nextCategory, name);
+        moveItemMetadata(item, nextItem);
+        return nextItem;
     });
 
     categoryOrder = categoryOrder.map(category => category === oldCategory ? nextCategory : category);
@@ -1595,9 +1208,7 @@ function renameCategory(oldCategory) {
     saveCategoryOrder(categoryOrder);
     saveCollapsedCategories(collapsedCategories);
     saveUncheckedCategories(uncheckedCategories);
-    tagLayout = [];
     render();
-    if (currentMode === 'tags') renderTagBoard();
     markListChanged();
 }
 
@@ -1619,7 +1230,7 @@ function render() {
     count.textContent = `共 ${items.length} 项`;
 
     if (items.length === 0) {
-        list.innerHTML = '<div class=”empty”><strong>还没有项目</strong><span>先添加几个选项，或点击”导入JSON”使用别人分享的列表。</span></div>';
+        list.innerHTML = '<div class="empty"><strong>还没有项目</strong><span>先添加几个选项，或点击“导入JSON”使用别人分享的列表。</span></div>';
         updateExpandAllButton();
         return;
     }
@@ -1652,7 +1263,7 @@ function render() {
     <input class="category-draw-checkbox" type="checkbox" data-category="${escapeAttribute(group.category)}" ${drawEnabled ? 'checked' : ''}>
     <span>抽取</span>
   </label>
-  ${currentMode === 'tags' ? '' : `<button class="rename-category-btn" data-category="${escapeAttribute(group.category)}" title="重命名分类">改名</button>`}
+  <button class="rename-category-btn" data-category="${escapeAttribute(group.category)}" title="重命名分类">改名</button>
   <span class="category-count">${group.items.length} 项</span>
 </li>
 ${collapsed ? '' : group.items.map(({ item, index }) => {
@@ -1660,8 +1271,8 @@ ${collapsed ? '' : group.items.map(({ item, index }) => {
         return `
 <li class="item-row${skipItemAnimation ? ' no-enter-animation' : ''}${drawEnabled ? '' : ' draw-disabled'}${highlightItems.has(item) ? ' import-highlight' : ''}${index === highlightPickedItem ? ' highlight' : ''}" draggable="true" data-index="${index}" data-category="${escapeAttribute(group.category)}">
   <span class="drag-handle item-drag-handle" title="拖动调整项目顺序">⠿</span>
-  <span class="item-text">${escapeHtml(item)}<span class="pick-count">${formatPickCount(item)}</span></span>
-	  ${currentMode === 'tags' ? '' : `<button class="item-more-btn" data-index="${index}" title="更多操作">⋯</button>`}
+  <span class="item-text">${escapeHtml(getItemDisplay(item))}<span class="pick-count">${formatPickCount(item)}</span></span>
+	  <button class="item-more-btn" data-index="${index}" title="更多操作">⋯</button>
 </li>
       `; }).join('')}
       `;
@@ -1736,9 +1347,7 @@ function escapeAttribute(str) {
 }
 
 function getItemNameInCategory(item, category) {
-    if (category === UNCATEGORIZED) return item;
-    const prefix = category + ' ';
-    return item.startsWith(prefix) ? item.slice(prefix.length) : item;
+    return FoodData.splitItem(item).name;
 }
 
 // 保留已有项目原样；新项目由“类别 + 名称”输入框决定是否带分类
@@ -1751,22 +1360,22 @@ function formatAllItems() {
 }
 
 function normalizeCategory(raw) {
-    return raw.replace(/[^一-龥]/g, '').slice(0, 2);
+    return FoodData.normalizeCategory(raw);
 }
 
 function normalizeName(raw) {
-    return raw.trim();
+    return FoodData.normalizeName(raw);
 }
 
 function buildItemValue(category, name) {
-    return category ? `${category} ${name}` : name;
+    return FoodData.buildItem(category, name);
 }
 
 function isCategoryInputInvalid(categoryInput) {
     const raw = categoryInput.value.trim();
     if (!raw) return false;
     const normalized = normalizeCategory(raw);
-    return raw !== normalized || normalized.length !== 2;
+    return Boolean(FoodData.validateCategory(raw));
 }
 
 function setCategoryInvalidState(categoryInput, invalid, flash = false) {
@@ -1805,7 +1414,7 @@ function validateCategoryInput(categoryInput) {
         setCategoryInvalidState(categoryInput, false);
         return '';
     }
-    if (raw !== normalized || normalized.length !== 2) {
+    if (FoodData.validateCategory(raw)) {
         if (raw === normalized) categoryInput.value = normalized;
         showCategoryFormatError(categoryInput);
         categoryInput.focus();
@@ -1816,13 +1425,20 @@ function validateCategoryInput(categoryInput) {
     return normalized;
 }
 
+function validateNameInput(input) {
+    const error = FoodData.validateName(input.value);
+    input.setCustomValidity(error);
+    if (error) { input.reportValidity(); input.focus(); return false; }
+    return true;
+}
+
 function addValueToItems(categoryInput, nameInput) {
     const category = validateCategoryInput(categoryInput);
     if (category === null) return false;
     const name = normalizeName(nameInput.value);
     categoryInput.value = category;
-    nameInput.value = nameInput.value.replace(/^\s+/, '');
-    if (!name) return false;
+    nameInput.setCustomValidity('');
+    if (!validateNameInput(nameInput)) return false;
 
     const val = buildItemValue(category, name);
 
@@ -1834,7 +1450,6 @@ function addValueToItems(categoryInput, nameInput) {
 
     insertItemByTime(val);
     sortItems(false);
-    tagLayout = [];
     categoryInput.value = '';
     nameInput.value = '';
     categoryInput.focus();
@@ -1843,7 +1458,6 @@ function addValueToItems(categoryInput, nameInput) {
     if (document.body.classList.contains('teaching-mode')) {
         setTeachingStep(teachingStep);
     }
-    if (currentMode === 'tags') renderTagBoard();
     markListChanged();
     return true;
 }
@@ -1855,6 +1469,7 @@ function addItem() {
 
 // 按分类顺序重排，保留类内手动顺序
 function sortItems(shouldRender = true) {
+    cancelPick();
     const groups = buildGroups();
     syncCategoryOrder(groups);
     items = flattenGroups(groups);
@@ -1888,6 +1503,23 @@ function splitItemForEdit(item) {
     };
 }
 
+function moveItemMetadata(oldItem, nextItem) {
+    if (oldItem === nextItem || isTeachingStorageActive()) return;
+    for (const counts of [pickCounts, eatenCounts]) {
+        if (Object.hasOwn(counts, oldItem)) {
+            counts[nextItem] = (Number(counts[nextItem]) || 0) + (Number(counts[oldItem]) || 0);
+            delete counts[oldItem];
+        }
+    }
+    if (Object.hasOwn(drawWeights, oldItem)) {
+        drawWeights[nextItem] = drawWeights[oldItem];
+        delete drawWeights[oldItem];
+    }
+    savePickCounts(pickCounts);
+    saveEatenCounts(eatenCounts);
+    saveDrawWeights(drawWeights);
+}
+
 function saveEdit(index) {
     const row = document.querySelector(`li.item-row[data-index="${index}"]`);
     if (!row) return;
@@ -1898,8 +1530,8 @@ function saveEdit(index) {
     const category = validateCategoryInput(categoryInput);
     if (category === null) return;
     const name = normalizeName(nameInput.value);
-    nameInput.value = nameInput.value.replace(/^\s+/, '');
-    if (!name) return;
+    nameInput.setCustomValidity('');
+    if (!validateNameInput(nameInput)) return;
 
     const val = buildItemValue(category, name);
     if (isDuplicateItem(val, index)) {
@@ -1907,10 +1539,11 @@ function saveEdit(index) {
         return;
     }
 
+    cancelPick();
+    moveItemMetadata(items[index], val);
     items.splice(index, 1);
     insertItemByTime(val);
     sortItems(false);
-    tagLayout = [];
     suppressNextListAnimation = true;
     render();
     if (document.body.classList.contains('teaching-mode')) {
@@ -1938,9 +1571,9 @@ function startEdit(index, shouldFocus = true) {
     li.innerHTML = `
   <span class="drag-handle item-drag-handle">⠿</span>
   <div class="item-input-group item-edit-group">
-    <input class="category-input" type="text" placeholder="空则无类别" value="${escapeAttribute(parts.category)}">
+    <input class="category-input" type="text" placeholder="类别可留空" maxlength="20" value="${escapeAttribute(parts.category)}">
     <span class="input-separator"></span>
-    <input class="name-input" type="text" placeholder="名称，回车保存" value="${escapeAttribute(parts.name)}">
+    <input class="name-input" type="text" placeholder="名称，回车保存" maxlength="80" value="${escapeAttribute(parts.name)}">
   </div>
   <button class="save" data-index="${index}" title="保存">✓</button>
   <button class="cancel" title="取消">↩</button>
@@ -1959,7 +1592,7 @@ function startEdit(index, shouldFocus = true) {
         if (e.key === 'Escape') cancelInlineEdit();
     });
     nameInput.addEventListener('input', function () {
-        this.value = this.value.replace(/^\s+/, '');
+        this.setCustomValidity('');
     });
     nameInput.addEventListener('keydown', function (e) {
         if (e.key === 'Enter') saveEdit(index);
@@ -1979,7 +1612,21 @@ function startEdit(index, shouldFocus = true) {
     updateCategoryValidity(categoryInput);
 }
 
-// 抽取（5~10 次快速随机切换，候选框只显示最终结果）
+// 列表变化、切换分区或进入教学时取消尚未结束的抽取，避免异步回调串用新列表。
+let pickTimer = null;
+let pickGeneration = 0;
+function cancelPick() {
+    pickGeneration++;
+    clearTimeout(pickTimer);
+    pickTimer = null;
+    const button = document.getElementById('pickBtn');
+    button.disabled = false;
+    button.textContent = '抽一个';
+    clearResultBlur();
+    if (document.body.classList.contains('teaching-mode')) updateTeachingInputLock();
+}
+
+// 按设置时长滚动抽取。
 function pick() {
     const resultEl = document.getElementById('result');
     const pickBtn = document.getElementById('pickBtn');
@@ -2001,6 +1648,7 @@ function pick() {
     }
     hideResultConfirm();
 
+    const generation = ++pickGeneration;
     const totalRolls = Math.max(8, Math.round(drawDurationSeconds * 8));
     const drawDurationMs = drawDurationSeconds * 1000;
     let roll = 0;
@@ -2014,6 +1662,7 @@ function pick() {
     document.querySelectorAll('li.highlight').forEach(el => el.classList.remove('highlight'));
 
     function doRoll() {
+        if (generation !== pickGeneration) return;
         // 尽量不和上一轮重复，增强滚动感
         let picked;
         do {
@@ -2025,12 +1674,12 @@ function pick() {
         const progress = roll / totalRolls;
         setResultBlur(progress);
         const rollDuration = 70 + progress * 170;
-        setResultText('👉 ' + picked.item, true, rollDuration);
+        setResultText('👉 ' + getItemDisplay(picked.item), true, rollDuration);
 
         roll++;
         if (roll >= totalRolls) {
             // 最终结果
-            setResultText('🎯 ' + items[lastIdx], true, 260);
+            setResultText('🎯 ' + getItemDisplay(items[lastIdx]), true, 260);
             newItemsUntilNextDraw.clear();
             addDrawHistory(items[lastIdx]);
             var category = getItemCategory(items[lastIdx]);
@@ -2054,7 +1703,7 @@ function pick() {
         const delayProgress = roll / totalRolls;
         const averageDelay = drawDurationMs / Math.max(1, totalRolls - 1);
         const delay = Math.max(35, averageDelay * (0.45 + delayProgress * 1.1));
-        setTimeout(doRoll, delay);
+        pickTimer = setTimeout(doRoll, delay);
     }
 
     doRoll();
@@ -2351,7 +2000,7 @@ function setTeachingStep(step) {
     if (step === 0) {
         kicker.textContent = '0';
         title.textContent = '欢迎进入教学页面';
-        desc.innerHTML = '这里会用一个独立的空列表带你熟悉添加、修改、删除和导入示例。你可以随时点击左上角退出教学。点击下一步开始操作。';
+        desc.innerHTML = '这里演示“是啊吃什么”的分类抽取与列表管理，使用独立的教学列表，不影响你的真实记录。顶部另有“之后想吃”和“饭后加餐”两个无分类清单，退出教学后可以使用。点击下一步开始操作。';
         nextBtn.textContent = '下一步';
         flashTeachingStepZeroCard();
         updateTeachingNextState();
@@ -2361,7 +2010,7 @@ function setTeachingStep(step) {
     if (step === 1) {
         kicker.textContent = '1';
         title.textContent = '添加有类别的条目';
-        desc.innerHTML = '先点击<strong>类别框</strong>，在下方选择 <strong>输入“一食”</strong>。类别可以为空；如果填写，必须是正好两个汉字。选好后，点击下一步。';
+        desc.innerHTML = '先点击<strong>类别框</strong>，在下方选择 <strong>输入“一食”</strong>。类别可留空，也可填写 1–20 个汉字、英文字母或数字，例如“第一食堂”；不含空格和符号。选好后，点击下一步。';
         nextBtn.textContent = '下一步';
         if (teachingStep === teachingLatestStep && !isTeachingStepComplete()) {
             categoryInput?.classList.add('teaching-highlight');
@@ -2373,7 +2022,7 @@ function setTeachingStep(step) {
     if (step === 2) {
         kicker.textContent = '2';
         title.textContent = '填写条目名称';
-        desc.innerHTML = '现在点击<strong>名称框</strong>，在下方选择 <strong>输入“兰州拉面”</strong>。名称是实际会参与抽取的内容。';
+        desc.innerHTML = '现在点击<strong>名称框</strong>，在下方选择 <strong>输入“兰州拉面”</strong>。名称是实际会参与抽取的内容，最多 80 字，支持汉字、英文、数字、空格及括号、短横线、间隔号等常用符号，不支持 emoji 或特殊控制字符。';
         nextBtn.textContent = '下一步';
         if (teachingStep === teachingLatestStep && !isTeachingStepComplete()) {
             nameInput?.classList.add('teaching-highlight');
@@ -2477,7 +2126,7 @@ function setTeachingStep(step) {
     if (step === 10) {
         kicker.textContent = '10';
         title.textContent = '手动调整顺序';
-        desc.innerHTML = '你可以拖动待抽列表里的分类或同类别条目，手动调整顺序。电脑端直接拖动；手机端可以长按分类、条目空白处或拖动手柄后再拖动。拖动时，蓝色横线会提示即将插入的位置。试试看也没关系，不操作也可以继续。';
+        desc.innerHTML = '你可以拖动待抽列表里的分类或同类别条目，手动调整顺序。电脑端直接拖动；手机端请长按分类或条目的拖动手柄后再拖动。拖动时，蓝色横线会提示即将插入的位置。试试看也没关系，不操作也可以继续。';
         nextBtn.textContent = '下一步';
         document.querySelectorAll('#list .drag-handle').forEach(handle => handle.classList.add('teaching-highlight'));
         updateTeachingNextState();
@@ -2524,8 +2173,8 @@ function setTeachingStep(step) {
     if (step === 14) {
         closeTeachingMockImport();
         const features = [
-            { key: 'scope', label: '抽取范围', text: '每个分类右侧的勾选框表示是否参与抽取；取消勾选后，普通抽取不会抽到该分类，标签模式中也会变灰不可点按。右上角的 <strong>全选</strong> 可以快速全选 / 全不选。' },
-            { key: 'rename', label: '类别改名', text: '分类标题右侧的 <strong>改名</strong> 可以重命名整个分类。输入仍需是两个汉字，分类内项目会一起换到新类别。' },
+            { key: 'scope', label: '抽取范围', text: '每个分类右侧的勾选框表示是否参与抽取；取消勾选后，“是啊吃什么”不会抽到该分类。右上角的 <strong>全选</strong> 可以快速全选 / 全不选。' },
+            { key: 'rename', label: '类别改名', text: '分类标题右侧的 <strong>改名</strong> 可以重命名整个分类。支持 1–20 个汉字、英文字母或数字，不含空格和符号，分类内项目会一起换到新类别。' },
             { key: 'export', label: '导出备份', text: '列表整理好后，可以从右上角菜单导出JSON，之后需要迁移或备份时更安心。教学模式下这个入口是灰的，不会真的下载文件。' }
         ];
         kicker.textContent = '14';
@@ -2555,7 +2204,7 @@ function setTeachingStep(step) {
     closeTeachingMockImport();
     kicker.textContent = '16';
     title.textContent = '教学完成';
-    desc.innerHTML = '教学到这里就结束了。愿你以后永远不愁吃什么，打开列表就能抽到今天的答案。';
+    desc.innerHTML = '教学到这里就结束了。退出后，顶部“之后想吃”可以记录想去的店，“饭后加餐”可以记录路边摊、小吃；这两个独立清单只支持记录、删除和排序，不分大类、不参与抽取。中间“是啊吃什么”保留分类抽取功能。';
     nextBtn.textContent = '完成';
     updateTeachingNextState();
 }
@@ -2607,6 +2256,8 @@ function transitionToHomeMode() {
 }
 
 function enterTeachingMode() {
+    cancelPick();
+    closeItemPopover();
     savedMainState = {
         items: [...items],
         categoryOrder: [...categoryOrder],
@@ -2616,8 +2267,13 @@ function enterTeachingMode() {
         hasUnsavedExport,
         newItemsUntilNextDraw: [...newItemsUntilNextDraw],
         categoryInputValue: document.getElementById('categoryInput').value,
-        itemInputValue: document.getElementById('itemInput').value
+        itemInputValue: document.getElementById('itemInput').value,
+        drawWeights: { ...drawWeights },
+        undoImportState
     };
+    undoImportState = null;
+    hideImportUndoPrompt();
+    toggleResult();
     teachingItems = [];
     teachingCategoryOrder = [];
     teachingStep = 0;
@@ -2635,7 +2291,7 @@ function enterTeachingMode() {
     listSearchQuery = '';
     hasUnsavedExport = false;
     updateDrawDurationDisplay();
-    switchMode('normal');
+    switchSection('picker');
     document.body.classList.add('teaching-mode');
     document.getElementById('listSearchInput').value = '';
     // 清空输入框，教学第 1、2 步从空白开始（进入前的值存在 savedMainState 里）
@@ -2710,6 +2366,13 @@ function confirmAppConfirmFinal() {
 }
 
 function exitTeachingMode() {
+    cancelPick();
+    closeItemPopover();
+    closeTeachingMockImport();
+    pendingImportData = null;
+    document.getElementById('importDialogOverlay').classList.remove('show');
+    document.body.classList.remove('teaching-import-step');
+    resetImportDialogActions();
     clearTeachingHighlights();
     closeTeachingSuggestionMenu();
     closeShareCodeView();
@@ -2725,6 +2388,8 @@ function exitTeachingMode() {
         listSearchQuery = savedMainState.listSearchQuery;
         hasUnsavedExport = savedMainState.hasUnsavedExport;
         newItemsUntilNextDraw = new Set(savedMainState.newItemsUntilNextDraw || []);
+        drawWeights = savedMainState.drawWeights;
+        undoImportState = savedMainState.undoImportState;
         savedMainState = null;
     }
     const categoryInput = document.getElementById('categoryInput');
@@ -2733,6 +2398,8 @@ function exitTeachingMode() {
     updateCategoryValidity(categoryInput);
     document.getElementById('listSearchInput').value = listSearchQuery;
     updateExportStatus();
+    toggleResult();
+    if (undoImportState) showImportUndoPrompt();
     updateTeachingInputLock();
     render();
 }
@@ -2744,30 +2411,14 @@ function moveCaretToEnd(input) {
 }
 
 function setupCategoryNameNavigation(categoryInput, nameInput) {
-    let composing = false;
-
-    function maybeMoveToName() {
-        if (composing) return;
-        if (document.body.classList.contains('teaching-mode') && teachingStep === 1) return;
-        if (!isCategoryInputInvalid(categoryInput) && categoryInput.value.trim().length > 0) {
-            nameInput.focus();
-        }
-    }
-
-    categoryInput.addEventListener('compositionstart', function () {
-        composing = true;
-    });
 
     categoryInput.addEventListener('compositionend', function () {
-        composing = false;
         updateCategoryValidity(this);
-        maybeMoveToName();
         updateTeachingNextState();
     });
 
     categoryInput.addEventListener('input', function () {
         updateCategoryValidity(this);
-        maybeMoveToName();
         updateTeachingNextState();
         var dd = document.getElementById('categoryDropdownMenu');
         if (dd) dd.remove();
@@ -2800,7 +2451,7 @@ function setupSplitInput(categoryId, nameId, submitFn) {
     });
 
     nameInput.addEventListener('input', function () {
-        this.value = this.value.replace(/^\s+/, '');
+        this.setCustomValidity('');
         updateTeachingNextState();
     });
 
@@ -2836,19 +2487,6 @@ function enableGuideAttention() {
     document.addEventListener('pointerdown', dismissGuideAttention, { once: true });
 }
 
-function enterWelcomePage() {
-    const overlay = document.getElementById('welcomeOverlay');
-    if (!overlay) return;
-    overlay.classList.add('expand-out');
-    document.body.classList.remove('welcome-active');
-    document.body.classList.add('welcome-main-in');
-    setTimeout(() => {
-        overlay.remove();
-        document.body.classList.remove('welcome-main-in');
-        enableGuideAttention();
-    }, 420);
-}
-
 // ===== 事件绑定 =====
 document.getElementById('addBtn').addEventListener('click', addItem);
 document.getElementById('categoryInput').addEventListener('click', function () {
@@ -2876,7 +2514,8 @@ document.getElementById('categoryDropdownBtn').addEventListener('click', functio
         btn.textContent = cat;
         btn.addEventListener('click', function (c) {
             return function () {
-                document.getElementById('categoryInput').value = c;
+                document.getElementById('categoryInput').value = c === UNCATEGORIZED ? '' : c;
+                updateCategoryValidity(document.getElementById('categoryInput'));
                 document.getElementById('categoryInput').focus();
                 document.getElementById('itemInput').focus();
                 menu.remove();
@@ -2888,7 +2527,6 @@ document.getElementById('categoryDropdownBtn').addEventListener('click', functio
 });
 setupSplitInput('categoryInput', 'itemInput', addItem);
 document.getElementById('newUserGuideBtn').addEventListener('click', transitionToTeachingMode);
-document.getElementById('enterWelcomeBtn').addEventListener('click', enterWelcomePage);
 document.getElementById('neverShowGuideBtn').addEventListener('click', function (e) {
     e.stopPropagation();
     disableGuideAttention();
@@ -2938,8 +2576,6 @@ document.getElementById('teachingPrevBtn').addEventListener('click', function ()
 });
 document.getElementById('pickBtn').addEventListener('click', pick);
 document.getElementById('toggleResultBtn').addEventListener('click', toggleResult);
-document.getElementById('normalModeBtn').addEventListener('click', () => switchMode('normal'));
-document.getElementById('tagModeBtn').addEventListener('click', () => switchMode('tags'));
 document.getElementById('statsBtn').addEventListener('click', function (e) {
     if (document.body.classList.contains('teaching-mode')) return;
     e.stopPropagation();
@@ -3078,13 +2714,8 @@ document.addEventListener('pointerdown', function (e) {
     if (!e.target.closest('.eaten-select-field')) closeEatenMenus();
 });
 
-document.getElementById('drawTagBtn').addEventListener('click', drawRandomTag);
 document.getElementById('toggleDrawHistoryBtn').addEventListener('click', toggleDrawHistory);
 document.getElementById('clearDrawHistoryBtn').addEventListener('click', clearDrawHistory);
-document.getElementById('pauseTagsBtn').addEventListener('click', toggleTagPause);
-document.getElementById('motionSpeedInput').addEventListener('input', function () {
-    tagMotionSpeed = parseFloat(this.value) || 1;
-});
 document.getElementById('drawDurationMinusBtn').addEventListener('click', function (e) {
     if (document.body.classList.contains('teaching-mode')) return;
     e.stopPropagation();
@@ -3096,8 +2727,6 @@ document.getElementById('drawDurationPlusBtn').addEventListener('click', functio
     setDrawDurationSeconds(drawDurationSeconds + 0.1);
 });
 updateDrawDurationDisplay();
-document.getElementById('tagBoard').addEventListener('click', hideTagReveal);
-document.getElementById('tagRevealOverlay').addEventListener('click', hideTagReveal);
 document.getElementById('formatHelpBtn').addEventListener('click', function () {
     document.getElementById('formatHelpOverlay').classList.add('show');
 });
@@ -3264,25 +2893,6 @@ document.addEventListener('click', function (e) {
         }
     }
 
-    if (currentMode !== 'tags') return;
-    const rightPanel = document.querySelector('.right-panel');
-    const clickedInsideRightPanel = e.composedPath().some(el => el?.classList?.contains('right-panel'));
-    if (rightPanel.classList.contains('drawer-open') && !clickedInsideRightPanel) {
-        rightPanel.classList.remove('drawer-open');
-    }
-});
-
-// 展开/收起列表
-document.getElementById('listHeader').addEventListener('click', function (e) {
-    // 不拦截展开/设置菜单按钮的点击
-    if (e.target.closest('#expandAllBtn') || e.target.closest('#drawScopeAllBtn') || e.target.closest('.settings-wrap')) return;
-    if (items.length === 0 || document.body.classList.contains('teaching-mode')) {
-        ensureListOpen();
-        return;
-    }
-    if (currentMode === 'tags') {
-        document.querySelector('.right-panel').classList.toggle('drawer-open');
-    }
 });
 
 document.getElementById('expandAllBtn').addEventListener('click', function (e) {
@@ -3401,7 +3011,6 @@ document.getElementById('drawScopeAllBtn').addEventListener('click', function (e
             const insertAfter = li.classList.contains('drag-insert-after');
             const targetIndex = parseInt(li.dataset.index);
             if (moveItemWithinCategory(dragItemIndex, targetIndex, insertAfter)) {
-                tagLayout = [];
                 suppressNextListAnimation = true;
                 render();
                 markListChanged();
@@ -3533,6 +3142,16 @@ document.getElementById('drawScopeAllBtn').addEventListener('click', function (e
     list.addEventListener('pointercancel', clearPressFeedback);
 })();
 
+if (LEGACY_STORAGE && localStorage.getItem(STORAGE_KEY)) {
+    const keys = [STORAGE_KEY, CATEGORY_ORDER_KEY, COLLAPSED_CATEGORIES_KEY, UNCHECKED_CATEGORIES_KEY, DRAW_HISTORY_KEY, PICK_COUNTS_KEY, EATEN_COUNTS_KEY, DRAW_WEIGHTS_KEY];
+    const backupKey = 'picker_before_v2_backup';
+    if (!localStorage.getItem(backupKey)) localStorage.setItem(backupKey, JSON.stringify(Object.fromEntries(keys.map(key => [key, localStorage.getItem(key)]))));
+    saveDrawHistory(drawHistory);
+    savePickCounts(pickCounts);
+    saveEatenCounts(eatenCounts);
+    saveDrawWeights(drawWeights);
+}
 formatAllItems();
 render();
 renderDrawHistory();
+enableGuideAttention();
