@@ -5,8 +5,16 @@
     const UNCATEGORIZED = '未分类';
     const CATEGORY_MAX = 20;
     const NAME_MAX = 80;
+    const NAME_SYMBOLS = Object.freeze(['(', ')', '（', '）', '[', ']', '【', '】', '·', '•', '&', '＆', '+', '＋', '-', '—', '_', '.', ',', '，', '。', '!', '！', '?', '？', ':', '：', '、', "'", '’', '‘', '“', '”', '"', '/', '／', '%', '％']);
     const categoryPattern = /^[\p{Script=Han}A-Za-z0-9]+$/u;
-    const namePattern = /^[\p{Script=Han}A-Za-z0-9 ()（）\[\]【】·•&＆+＋\-—_.,，。!！?？:：、'’‘“”"/／%％]+$/u;
+    const baseCharacter = /^[\p{Script=Han}A-Za-z0-9]$/u;
+    const symbolSet = new Set(NAME_SYMBOLS);
+    function isAllowedCharacter(character, kind = 'name') {
+        return baseCharacter.test(character) || (kind === 'name' && (character === ' ' || symbolSet.has(character)));
+    }
+    function filterInput(value, kind = 'name') {
+        return [...String(value)].filter(character => isAllowedCharacter(character, kind)).join('');
+    }
     const controls = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
     const normalizeName = value => String(value).trim().replace(/ +/g, ' ');
     const normalizeCategory = value => String(value).trim();
@@ -23,8 +31,8 @@
         const raw = String(value);
         const text = normalizeName(raw);
         if (!text) return '请填写名称';
-        if (controls.test(raw) || !namePattern.test(text)) {
-            return '名称仅支持汉字、英文字母、数字、空格及括号、短横线、间隔号等常用符号，不支持 emoji 或特殊控制字符';
+        if (controls.test(raw) || filterInput(text) !== text) {
+            return '名称含禁用字符；请查看输入格式说明中的完整允许列表';
         }
         if ([...text].length > NAME_MAX) return '名称最多 80 个字符';
         return '';
@@ -78,7 +86,7 @@
         });
         return { version: VERSION, items: [...items], categoryOrder: [...categoryOrder], ...(legacyItems.length ? { legacyItems } : {}) };
     }
-    const api = { VERSION, UNCATEGORIZED, CATEGORY_MAX, NAME_MAX, normalizeName, normalizeCategory, validateName, validateCategory, splitItem, buildItem, upgradeItem, parseImport, exportData };
+    const api = { VERSION, UNCATEGORIZED, CATEGORY_MAX, NAME_MAX, NAME_SYMBOLS, isAllowedCharacter, filterInput, normalizeName, normalizeCategory, validateName, validateCategory, splitItem, buildItem, upgradeItem, parseImport, exportData };
     root.FoodData = api;
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -184,9 +184,12 @@
             <h2>输入格式说明</h2>
             <p>添加项目时，输入框分为“类别”和“名称”两部分。</p>
             <p><strong>类别</strong> 可留空；填写时为 <strong>1–20 字</strong>，只支持汉字、字母和数字，<strong>不能含空格</strong>。留空的项目放到 <strong>未分类</strong> 里。</p>
-            <p><strong>名称</strong> 最多 <strong>80 字</strong>，可含空格和常用符号，如括号、短横线、间隔号等。</p>
-            <p>有类别时，保存格式为 <strong>类别 名称</strong>，用第一个空格区分类别和名称；名称里其余空格会保留。例如 <strong>第一食堂 牛肉面（少辣）</strong> 会归到 <strong>第一食堂</strong> 类。</p>
-            <p>未分类且名称含空格时，保存内容会自动带上 <strong>未分类</strong> 前缀（如 <strong>未分类 Burger King</strong>），避免把名称误认为类别；名称不含空格时仍直接保存名称。平时只需把类别框留空，无须手动输入前缀。</p>
+            <p><strong>名称</strong> 为 <strong>1–80 字</strong>，允许汉字、英文字母、数字、半角空格，以及下方完整列表中的符号：</p>
+            <p id="allowedNameSymbols" aria-label="名称允许的全部符号"></p>
+            <p><strong>禁用范围：</strong>除上述文字、数字、空格与符号外，其他字符全部禁用，包括 emoji、换行、制表符、零宽字符及其他控制字符。类别不允许任何空格或符号。</p>
+            <p>输入或粘贴禁用字符时会自动拦截，并在页面底部提示；不会弹窗或打断输入。中文输入法在选词完成后检查。</p>
+            <p>有类别时，保存格式为 <strong>类别 名称</strong>，用第一个半角空格区分类别和名称。保存时去除首尾空格，连续半角空格合并为一个。</p>
+            <p>类别留空的项目归入<strong>未分类</strong>。若名称含空格，保存时会自动添加未分类标记，页面不显示这个标记，无须手动填写。</p>
             <p>同一类别的项目会自动放到同一类里。</p>
         </div>
     </div>
@@ -251,6 +254,18 @@
         </div>
     </div>
 
+    <div id="renameCategoryOverlay" class="center-modal">
+        <form id="renameCategoryForm" class="modal-card">
+            <h2 id="renameCategoryTitle" class="modal-title">类别改名</h2>
+            <p class="modal-desc">1–20 个汉字、英文字母或数字，不含空格和符号。</p>
+            <input id="renameCategoryInput" type="text" maxlength="20" aria-label="新的类别名称" autocomplete="off">
+            <div class="modal-btn-row">
+                <button type="submit" class="modal-pill-btn">保存</button>
+                <button id="cancelRenameCategoryBtn" type="button" class="modal-pill-btn">取消</button>
+            </div>
+        </form>
+    </div>
+
     <div id="statsOverlay" class="stats-overlay center-modal">
         <div class="stats-card">
             <div class="stats-header">
@@ -296,11 +311,12 @@
         </div>
     </div>
 
-    <div id="toast" class="toast"></div>
+    <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
-    <div class="version-label">110302</div>
+    <div class="version-label">110501</div>
 
     <script src="assets/app/data.js"></script>
+    <script src="assets/app/input-guard.js"></script>
     <script src="assets/app/app.js"></script>
     <script src="assets/app/sections.js"></script>
 

@@ -222,6 +222,8 @@ let exportReminderTimer = null;
 let toastTimer = null;
 let hasUnsavedExport = false;
 let listSearchQuery = '';
+// 搜索展开状态只用于当前视图，绝不写回分类折叠存储。
+let searchCollapsedCategories = new Set();
 let drawHistory = loadDrawHistory();
 let drawHistoryCollapsed = true;
 let pickCounts = loadPickCounts();
@@ -653,7 +655,12 @@ function toggleCategoryDrawEnabled(category) {
 }
 
 function isCategoryCollapsed(category) {
-    return collapsedCategories.includes(category);
+    return listSearchQuery ? searchCollapsedCategories.has(category) : collapsedCategories.includes(category);
+}
+
+function setListSearchQuery(value) {
+    listSearchQuery = value.trim().toLowerCase();
+    searchCollapsedCategories.clear();
 }
 
 function collapseCategoryWithAnimation(category, afterCollapse) {
@@ -667,6 +674,12 @@ function collapseCategoryWithAnimation(category, afterCollapse) {
 }
 
 function toggleCategory(category) {
+    if (listSearchQuery) {
+        if (searchCollapsedCategories.has(category)) searchCollapsedCategories.delete(category);
+        else searchCollapsedCategories.add(category);
+        render();
+        return;
+    }
     if (!isCategoryCollapsed(category)) {
         collapseCategoryWithAnimation(category, () => {
             collapsedCategories.push(category);
@@ -689,6 +702,7 @@ function toggleCategory(category) {
 }
 
 function expandCategory(category) {
+    if (listSearchQuery) return searchCollapsedCategories.delete(category);
     if (!isCategoryCollapsed(category)) return false;
     collapsedCategories = collapsedCategories.filter(item => item !== category);
     saveCollapsedCategories(collapsedCategories);
@@ -696,6 +710,11 @@ function expandCategory(category) {
 }
 
 function collapseCategory(category) {
+    if (listSearchQuery) {
+        const changed = !searchCollapsedCategories.has(category);
+        searchCollapsedCategories.add(category);
+        return changed;
+    }
     if (isCategoryCollapsed(category)) return false;
     collapsedCategories.push(category);
     saveCollapsedCategories(collapsedCategories);
@@ -723,17 +742,6 @@ function setResultText(text, shouldRoll = false, duration = 120) {
         textEl.style.animationDuration = `${duration}ms`;
     }
     resultEl.appendChild(textEl);
-}
-
-function setResultBlur(progress) {
-    const resultEl = document.getElementById('result');
-    const blur = Math.max(0, 24 * (1 - progress));
-    resultEl.style.filter = `blur(${blur}px)`;
-}
-
-function clearResultBlur() {
-    const resultEl = document.getElementById('result');
-    resultEl.style.filter = '';
 }
 
 function showResultConfirm() {
@@ -840,7 +848,7 @@ function undoImport() {
     collapsedCategories = [...undoImportState.collapsedCategories];
     uncheckedCategories = [...undoImportState.uncheckedCategories];
     hasUnsavedExport = undoImportState.hasUnsavedExport;
-    listSearchQuery = undoImportState.listSearchQuery;
+    setListSearchQuery(undoImportState.listSearchQuery);
     newItemsUntilNextDraw = new Set(undoImportState.newItemsUntilNextDraw || []);
     undoImportState = null;
     document.getElementById('listSearchInput').value = listSearchQuery;
@@ -1135,7 +1143,7 @@ function getAllCategories() {
 function areAllCategoriesExpanded() {
     const categories = getAllCategories();
     if (categories.length === 0) return true;
-    return categories.every(category => !collapsedCategories.includes(category));
+    return categories.every(category => !isCategoryCollapsed(category));
 }
 
 function updateExpandAllButton() {
@@ -1162,6 +1170,11 @@ function collapseCategoriesWithAnimation(categories, afterCollapse) {
 function toggleAllCategories() {
     const categories = getAllCategories();
     const allExpanded = areAllCategoriesExpanded();
+    if (listSearchQuery) {
+        searchCollapsedCategories = allExpanded ? new Set(categories) : new Set();
+        render();
+        return;
+    }
 
     if (allExpanded) {
         collapseCategoriesWithAnimation(categories, () => {
@@ -1177,15 +1190,26 @@ function toggleAllCategories() {
 }
 
 // 渲染列表
-function renameCategory(oldCategory) {
+let renamingCategory = '';
+function renameCategory(oldCategory, raw) {
     if (!oldCategory) return;
-    const raw = prompt(`将分类“${oldCategory}”重命名为：`, oldCategory === UNCATEGORIZED ? '' : oldCategory);
-    if (raw === null) return;
-    const nextCategory = normalizeCategory(raw.trim());
-    if (!nextCategory || FoodData.validateCategory(nextCategory)) {
-        alert(FoodData.validateCategory(nextCategory) || '请填写类别名称');
+    const overlay = document.getElementById('renameCategoryOverlay');
+    const input = document.getElementById('renameCategoryInput');
+    if (raw === undefined) {
+        renamingCategory = oldCategory;
+        document.getElementById('renameCategoryTitle').textContent = `重命名“${oldCategory}”`;
+        input.value = oldCategory === UNCATEGORIZED ? '' : oldCategory;
+        overlay.classList.add('show');
+        input.focus();
+        input.select();
         return;
     }
+    const nextCategory = normalizeCategory(raw);
+    if (!nextCategory || FoodData.validateCategory(nextCategory)) {
+        showToast(FoodData.validateCategory(nextCategory) || '请填写类别名称');
+        return;
+    }
+    overlay.classList.remove('show');
     if (nextCategory === oldCategory) return;
 
     cancelPick();
@@ -1585,6 +1609,7 @@ function startEdit(index, shouldFocus = true) {
         validateCategoryInput(this);
     });
     categoryInput.addEventListener('keydown', function (e) {
+        if (e.isComposing || e.keyCode === 229) return;
         if (e.key === 'Enter') {
             e.preventDefault();
             nameInput.focus();
@@ -1595,7 +1620,7 @@ function startEdit(index, shouldFocus = true) {
         this.setCustomValidity('');
     });
     nameInput.addEventListener('keydown', function (e) {
-        if (e.key === 'Enter') saveEdit(index);
+        if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) saveEdit(index);
         if (e.key === 'Escape') cancelInlineEdit();
     });
     if (shouldFocus) nameInput.focus();
@@ -1622,7 +1647,6 @@ function cancelPick() {
     const button = document.getElementById('pickBtn');
     button.disabled = false;
     button.textContent = '抽一个';
-    clearResultBlur();
     if (document.body.classList.contains('teaching-mode')) updateTeachingInputLock();
 }
 
@@ -1656,7 +1680,6 @@ function pick() {
 
     pickBtn.disabled = true;
     pickBtn.textContent = '抽取中…';
-    setResultBlur(0);
 
     // 清除上次高亮
     document.querySelectorAll('li.highlight').forEach(el => el.classList.remove('highlight'));
@@ -1672,14 +1695,13 @@ function pick() {
 
         lastIdx = picked.index;
         const progress = roll / totalRolls;
-        setResultBlur(progress);
         const rollDuration = 70 + progress * 170;
-        setResultText('👉 ' + getItemDisplay(picked.item), true, rollDuration);
+        setResultText(getItemDisplay(picked.item), true, rollDuration);
 
         roll++;
         if (roll >= totalRolls) {
             // 最终结果
-            setResultText('🎯 ' + getItemDisplay(items[lastIdx]), true, 260);
+            setResultText(getItemDisplay(items[lastIdx]), true, 260);
             newItemsUntilNextDraw.clear();
             addDrawHistory(items[lastIdx]);
             var category = getItemCategory(items[lastIdx]);
@@ -1689,7 +1711,6 @@ function pick() {
                 pickedCategory = category;
             }
             incrementPickCount(items[lastIdx]);
-            setTimeout(clearResultBlur, 120);
             pickBtn.disabled = false;
             pickBtn.textContent = '抽一个';
             showResultConfirm();
@@ -2022,7 +2043,7 @@ function setTeachingStep(step) {
     if (step === 2) {
         kicker.textContent = '2';
         title.textContent = '填写条目名称';
-        desc.innerHTML = '现在点击<strong>名称框</strong>，在下方选择 <strong>输入“兰州拉面”</strong>。名称是实际会参与抽取的内容，最多 80 字，支持汉字、英文、数字、空格及括号、短横线、间隔号等常用符号，不支持 emoji 或特殊控制字符。';
+        desc.innerHTML = '现在点击<strong>名称框</strong>，在下方选择 <strong>输入“兰州拉面”</strong>。名称是实际会参与抽取的内容，最多 80 字；允许汉字、英文字母、数字、半角空格及“输入格式说明”列出的全部符号。其余字符会被拦截，页面底部会提示，不打断输入。';
         nextBtn.textContent = '下一步';
         if (teachingStep === teachingLatestStep && !isTeachingStepComplete()) {
             nameInput?.classList.add('teaching-highlight');
@@ -2312,7 +2333,7 @@ function enterTeachingMode() {
     collapsedCategories = [];
     uncheckedCategories = [];
     newItemsUntilNextDraw = new Set();
-    listSearchQuery = '';
+    setListSearchQuery('');
     hasUnsavedExport = false;
     updateDrawDurationDisplay();
     switchSection('picker');
@@ -2409,7 +2430,7 @@ function exitTeachingMode() {
         categoryOrder = savedMainState.categoryOrder;
         collapsedCategories = savedMainState.collapsedCategories;
         uncheckedCategories = savedMainState.uncheckedCategories || [];
-        listSearchQuery = savedMainState.listSearchQuery;
+        setListSearchQuery(savedMainState.listSearchQuery);
         hasUnsavedExport = savedMainState.hasUnsavedExport;
         newItemsUntilNextDraw = new Set(savedMainState.newItemsUntilNextDraw || []);
         drawWeights = savedMainState.drawWeights;
@@ -2435,6 +2456,8 @@ function moveCaretToEnd(input) {
 }
 
 function setupCategoryNameNavigation(categoryInput, nameInput) {
+    FoodInput.bind(categoryInput, 'category');
+    FoodInput.bind(nameInput, 'name');
 
     categoryInput.addEventListener('compositionend', function () {
         updateCategoryValidity(this);
@@ -2468,6 +2491,7 @@ function setupSplitInput(categoryId, nameId, submitFn) {
     });
 
     categoryInput.addEventListener('keydown', function (e) {
+        if (e.isComposing || e.keyCode === 229) return;
         if (e.key === 'Enter') {
             e.preventDefault();
             nameInput.focus();
@@ -2480,7 +2504,7 @@ function setupSplitInput(categoryId, nameId, submitFn) {
     });
 
     nameInput.addEventListener('keydown', function (e) {
-        if (e.key !== 'Enter') return;
+        if (e.isComposing || e.keyCode === 229 || e.key !== 'Enter') return;
         if (document.body.classList.contains('teaching-mode') && teachingStep !== 3) return;
         e.preventDefault();
         e.stopPropagation();
@@ -2512,6 +2536,19 @@ function enableGuideAttention() {
 }
 
 // ===== 事件绑定 =====
+const renameCategoryOverlay = document.getElementById('renameCategoryOverlay');
+FoodInput.bind(document.getElementById('renameCategoryInput'), 'category');
+document.getElementById('renameCategoryForm').addEventListener('submit', event => {
+    event.preventDefault();
+    renameCategory(renamingCategory, document.getElementById('renameCategoryInput').value);
+});
+document.getElementById('cancelRenameCategoryBtn').addEventListener('click', () => renameCategoryOverlay.classList.remove('show'));
+renameCategoryOverlay.addEventListener('click', event => {
+    if (event.target === renameCategoryOverlay) renameCategoryOverlay.classList.remove('show');
+});
+document.addEventListener('keydown', event => {
+    if (event.key === 'Escape') renameCategoryOverlay.classList.remove('show');
+});
 document.getElementById('addBtn').addEventListener('click', addItem);
 document.getElementById('categoryInput').addEventListener('click', function () {
     openTeachingSuggestionMenu('categoryInput');
@@ -2863,7 +2900,7 @@ document.getElementById('shareCodeViewCopyBtn').addEventListener('click', copySh
 document.getElementById('shareCodeImportConfirmBtn').addEventListener('click', handleShareCodeImport);
 document.getElementById('shareCodeImportCancelBtn').addEventListener('click', closeShareCodeImport);
 document.getElementById('listSearchInput').addEventListener('input', function () {
-    listSearchQuery = this.value.trim().toLowerCase();
+    setListSearchQuery(this.value);
     render();
 });
 document.addEventListener('keydown', function (e) {

@@ -23,6 +23,7 @@
     const description = document.getElementById('lightListDescription');
     const form = document.getElementById('lightListForm');
     const input = document.getElementById('lightListInput');
+    FoodInput.bind(input, 'name');
     const list = document.getElementById('lightListItems');
     const count = document.getElementById('lightListCount');
     const error = document.getElementById('lightListError');

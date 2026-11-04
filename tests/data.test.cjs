@@ -10,6 +10,16 @@ test('names keep common punctuation and reject markup, controls and emoji', () =
     for (const name of ['肯德基（北门店）', '7-11', '麦当劳·甜品站', 'Burger King', '鱼&饭+茶/咖啡', 'Bob\'s (Shop)', '饭'.repeat(80)]) assert.equal(data.validateName(name), '');
     for (const name of ['', ' ', '<script>', '饭🍜', '饭\n菜', '饭\t菜', '饭\u200b菜', '饭'.repeat(81)]) assert.ok(data.validateName(name), name);
 });
+test('input filters and published symbol whitelist match validation exactly', () => {
+    for (const symbol of data.NAME_SYMBOLS) {
+        assert.equal(data.filterInput(symbol), symbol);
+        assert.equal(data.validateName('名称' + symbol), '');
+        assert.equal(data.filterInput(symbol, 'category'), '');
+    }
+    assert.equal(data.filterInput('饭<🍜>菜\\\t\n\u200b$★'), '饭菜');
+    assert.equal(data.filterInput('一 食-2', 'category'), '一食2');
+    assert.equal(data.filterInput('Bob\'s （店）+茶/咖啡'), 'Bob\'s （店）+茶/咖啡');
+});
 test('first-space parsing and uncategorized names are unambiguous', () => {
     assert.deepEqual(data.splitItem('第一食堂 Burger King'), { category: '第一食堂', name: 'Burger King' });
     const item = data.buildItem('', ' Burger  King ');

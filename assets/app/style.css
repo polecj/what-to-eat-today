@@ -4,6 +4,13 @@
     padding: 0;
 }
 
+:root {
+    /* 圆角分层：面板 / 列表条目 / 输入与矩形按钮；胶囊、圆形控件保留自身形状。 */
+    --radius-panel: 20px;
+    --radius-item: 10px;
+    --radius-control: 6px;
+}
+
 html,
 body {
     height: 100%;
@@ -112,7 +119,7 @@ body.teaching-mode .teaching-panel {
 .teaching-panel-card {
     padding: 16px 18px;
     border: 1px solid rgba(212, 160, 23, 0.28);
-    border-radius: 18px;
+    border-radius: var(--radius-panel);
     background: rgba(28, 28, 50, 0.84);
     box-shadow:
         0 18px 48px rgba(0, 0, 0, 0.32),
@@ -868,6 +875,18 @@ body.teaching-mode .right-panel {
     background: transparent;
 }
 
+/* 改名卡片沿用共用磨砂 modal，仅约束新输入框，不改遮罩和动画。 */
+#renameCategoryInput {
+    width: 100%;
+    min-width: 0;
+    margin: 0 0 18px;
+    border-radius: var(--radius-control);
+}
+
+#allowedNameSymbols {
+    overflow-wrap: anywhere;
+}
+
 /* 抽取统计 */
 .stats-overlay {
     --modal-layer: 70;
@@ -1579,7 +1598,7 @@ button.pick:hover {
     margin: -2px 0 12px;
     padding: 10px 12px;
     border: 1px solid rgba(255, 255, 255, 0.07);
-    border-radius: 14px;
+    border-radius: var(--radius-panel);
     background: rgba(22, 33, 62, 0.24);
     transition: border-color 0.22s ease, background 0.22s ease;
 }
@@ -1686,7 +1705,7 @@ button.pick:hover {
     word-break: normal;
     overflow: hidden;
     overflow-wrap: anywhere;
-    transition: transform 0.08s, filter 0.08s;
+    transition: transform 0.08s;
 }
 
 .result .result-text {
@@ -2627,10 +2646,26 @@ li.editing .item-drag-handle {
     margin: 8px 0;
     padding: 22px 18px;
     border: 1px dashed #34345c;
-    border-radius: 14px;
+    border-radius: var(--radius-panel);
     background: rgba(22, 33, 62, 0.34);
     color: #777;
     text-align: center;
+}
+
+/* 主抽取页与轻清单共用圆角层级；限定选择器，不改磨砂弹窗及胶囊/圆形控件。 */
+#pickerPanel :is(li, .draw-history-item, .draw-history-empty) {
+    border-radius: var(--radius-item);
+}
+
+#pickerPanel :is(.item-input-group, .item-input-group input, input.item-edit, .row > button,
+    button.pick, button.toggle-result, .category-dropdown-menu,
+    .category-dropdown-menu button, .settings-btn.menu-btn,
+    .settings-menu.menu-dropdown, .settings-menu .menu-item),
+#pickerPanel .list-header :is(button.sort-btn, button.expand-all-btn, button.draw-scope-all-btn),
+.item-popover,
+.item-popover-item,
+.light-list-form :is(input, button) {
+    border-radius: var(--radius-control);
 }
 
 /* ===== 独立轻清单 ===== */
@@ -2665,7 +2700,7 @@ li.editing .item-drag-handle {
     margin: 12px auto 0;
     padding: 24px;
     border: 1px solid #34345c;
-    border-radius: 20px;
+    border-radius: var(--radius-panel);
     background: rgba(22, 33, 62, 0.35);
 }
 
@@ -2743,7 +2778,7 @@ li.light-list-item {
     padding: 8px;
     margin: 0 0 8px;
     min-height: 52px;
-    border-radius: 10px;
+    border-radius: var(--radius-item);
     cursor: grab;
 }
 
@@ -2766,7 +2801,7 @@ li.light-list-item {
     min-width: 36px;
     min-height: 36px;
     padding: 4px 8px;
-    border-radius: 6px;
+    border-radius: var(--radius-control);
     border-color: #41415d;
     background: transparent;
 }
@@ -2871,6 +2906,29 @@ li.light-list-empty {
         padding: 12px 12px;
     }
 
+    body > h1 {
+        margin-bottom: 24px;
+    }
+
+    .mode-switch {
+        width: min(300px, calc(100% - 16px));
+    }
+
+    .mode-btn {
+        padding-inline: 4px;
+    }
+
+    /* 教学页不用分区胶囊，保留标题与副标题的原有关系。 */
+    body.teaching-mode > h1 {
+        margin-bottom: 12px;
+    }
+
+    body.teaching-mode .back-from-teaching {
+        position: static;
+        align-self: flex-start;
+        margin-bottom: 12px;
+    }
+
     .container {
         flex-direction: column;
         gap: 16px;
@@ -2896,7 +2954,7 @@ li.light-list-empty {
     }
 
     body.teaching-mode .row {
-        margin-top: 72px;
+        margin-top: 48px;
     }
 
     body.teaching-mode .right-panel {
@@ -2906,35 +2964,72 @@ li.light-list-empty {
     }
 
     .row {
-        flex-direction: column;
-        gap: 10px;
-        margin-top: 30px;
+        flex-direction: row;
+        align-items: stretch;
+        flex-wrap: nowrap;
+        gap: 8px;
+        /* 上方独立预留教学/帮助入口和类别提示两行，不占用胶囊及输入区域。 */
+        margin-top: 52px;
+    }
+
+    .row > .item-input-group {
+        flex: 1 1 0;
+        min-width: 0;
+    }
+
+    .row > button {
+        flex: 0 0 auto;
+        padding-inline: 12px;
+    }
+
+    .item-input-group .name-input {
+        flex: 1 1 0;
+        width: 0;
+        min-width: 0;
+        padding-inline: 8px;
     }
 
     .format-help {
         left: 0;
-        top: -32px;
+        top: -48px;
     }
 
     .new-user-guide {
         right: 0;
-        top: -34px;
+        top: -50px;
     }
 
     .never-show-guide {
-        right: 0;
-        top: -92px;
+        right: 88px;
+        top: -48px;
         z-index: 2;
     }
 
-    body.guide-attention .never-show-guide {
+    body.guide-attention:not(.teaching-mode) .row {
+        /* 首次引导气泡单独占一行，不向上覆盖分区胶囊。 */
+        margin-top: 88px;
+    }
+
+    body.guide-attention:not(.teaching-mode) .never-show-guide {
         display: block;
+    }
+
+    body.teaching-mode .never-show-guide {
+        display: none;
     }
 
     body.guide-attention .new-user-guide::before {
         right: 0;
         left: auto;
         transform: none;
+        min-width: 0;
+        width: max-content;
+        max-width: calc(100vw - 32px);
+        height: auto;
+        padding: 8px 12px;
+        border-radius: var(--radius-item);
+        line-height: 1.4;
+        white-space: normal;
     }
 
     body.guide-attention .new-user-guide::after {
@@ -2984,14 +3079,32 @@ li.light-list-empty {
     }
 
     .category-input {
-        flex-basis: clamp(84px, 27vw, 110px) !important;
-        width: clamp(84px, 27vw, 110px);
-        max-width: 110px;
+        flex: 0 1 clamp(64px, 20vw, 88px) !important;
+        width: clamp(64px, 20vw, 88px);
+        max-width: 88px;
+        padding-left: 4px;
+    }
+
+    .category-dropdown-btn {
+        width: 20px;
     }
 
     .category-format-hint {
-        left: 28px;
-        top: -20px;
+        left: 0;
+        top: -18px;
+        white-space: nowrap;
+    }
+
+    .list-header {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .list-header .header-right {
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 6px;
+        margin-left: auto;
     }
 
     .light-list-panel {
