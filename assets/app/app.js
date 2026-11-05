@@ -728,18 +728,46 @@ function collapseAutoExpandedCategory() {
     return changed;
 }
 
-function setResultText(text, shouldRoll = false, duration = 120) {
+function clearResultMotion() {
+    const resultEl = document.getElementById('result');
+    resultEl.querySelectorAll('.result-exit').forEach(element => element.remove());
+    const current = resultEl.querySelector('.result-text');
+    if (current) {
+        current.classList.remove('rolling', 'settling');
+        current.style.removeProperty('animation-duration');
+        current.style.removeProperty('--trail-alpha');
+        current.style.removeProperty('--roll-distance');
+    }
+}
+
+function setResultText(text, shouldRoll = false, duration = 120, motion = {}) {
     latestResultText = text;
     const resultEl = document.getElementById('result');
-    resultEl.innerHTML = '';
+    const previousElement = resultEl.querySelector('.result-text');
+    const previous = previousElement?.textContent;
+    const previousAlreadyLeaving = previousElement?.classList.contains('rolling');
+    resultEl.replaceChildren();
     if (resultHidden) return;
 
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (shouldRoll && !reducedMotion && previous && previous !== text && !previousAlreadyLeaving) {
+        const outgoing = document.createElement('span');
+        outgoing.className = 'result-exit';
+        outgoing.textContent = previous;
+        outgoing.setAttribute('aria-hidden', 'true');
+        outgoing.style.animationDuration = `${Math.min(duration, 160)}ms`;
+        outgoing.addEventListener('animationend', () => outgoing.remove(), { once: true });
+        resultEl.appendChild(outgoing);
+    }
     const textEl = document.createElement('span');
     textEl.className = 'result-text';
     textEl.textContent = text;
-    if (shouldRoll) {
-        textEl.classList.add('rolling');
+    if (shouldRoll && !reducedMotion) {
+        const strength = Math.max(0, Math.min(1, motion.strength ?? 1));
+        textEl.classList.add(motion.settle ? 'settling' : 'rolling');
         textEl.style.animationDuration = `${duration}ms`;
+        textEl.style.setProperty('--trail-alpha', (strength * 0.3).toFixed(3));
+        textEl.style.setProperty('--roll-distance', `${Math.round(20 + strength * 30)}px`);
     }
     resultEl.appendChild(textEl);
 }
@@ -1644,6 +1672,7 @@ function cancelPick() {
     pickGeneration++;
     clearTimeout(pickTimer);
     pickTimer = null;
+    clearResultMotion();
     const button = document.getElementById('pickBtn');
     button.disabled = false;
     button.textContent = '抽一个';
@@ -1673,7 +1702,7 @@ function pick() {
     hideResultConfirm();
 
     const generation = ++pickGeneration;
-    const totalRolls = Math.max(8, Math.round(drawDurationSeconds * 8));
+    const totalRolls = Math.max(6, Math.round(drawDurationSeconds * 14));
     const drawDurationMs = drawDurationSeconds * 1000;
     let roll = 0;
     let lastIdx = -1;
@@ -1694,14 +1723,11 @@ function pick() {
         } while (picked.index === lastIdx && drawableItems.length > 1);
 
         lastIdx = picked.index;
-        const progress = roll / totalRolls;
-        const rollDuration = 70 + progress * 170;
-        setResultText(getItemDisplay(picked.item), true, rollDuration);
-
+        const progress = roll / Math.max(1, totalRolls - 1);
         roll++;
         if (roll >= totalRolls) {
-            // 最终结果
-            setResultText(getItemDisplay(items[lastIdx]), true, 260);
+            // 最终结果保持锐利，只有一次轻微过冲的停靠，不带速度残影。
+            setResultText(getItemDisplay(items[lastIdx]), true, 320, { settle: true, strength: 0 });
             newItemsUntilNextDraw.clear();
             addDrawHistory(items[lastIdx]);
             var category = getItemCategory(items[lastIdx]);
@@ -1721,9 +1747,12 @@ function pick() {
             return;
         }
 
+        // 早期快速连续掠过，后段减速并减弱纵向残影；动画不超过本轮间隔。
         const delayProgress = roll / totalRolls;
         const averageDelay = drawDurationMs / Math.max(1, totalRolls - 1);
-        const delay = Math.max(35, averageDelay * (0.45 + delayProgress * 1.1));
+        const delay = Math.max(20, averageDelay * (0.45 + delayProgress * 1.1));
+        const strength = Math.pow(1 - progress, 1.4);
+        setResultText(getItemDisplay(picked.item), true, delay, { strength });
         pickTimer = setTimeout(doRoll, delay);
     }
 
