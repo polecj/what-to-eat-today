@@ -9,29 +9,32 @@
 
 </head>
 
-<body>
+<body data-section="picker">
     <button id="backFromTeachingBtn" class="back-from-teaching">← 返回</button>
 
     <h1>是啊吃啥呢</h1>
     <div id="teachingSubtitle" class="teaching-subtitle">教学页面</div>
 
     <nav class="mode-switch" aria-label="选择清单" data-section="picker">
-        <button id="wishlistSectionBtn" class="mode-btn" type="button" data-section="wishlist" aria-controls="lightListPanel" aria-pressed="false">之后想吃</button>
-        <button id="pickerSectionBtn" class="mode-btn active" type="button" data-section="picker" aria-controls="pickerPanel" aria-pressed="true">是啊吃什么</button>
-        <button id="snacksSectionBtn" class="mode-btn" type="button" data-section="snacks" aria-controls="lightListPanel" aria-pressed="false">饭后加餐</button>
+        <button id="wishlistSectionBtn" class="mode-btn" type="button" data-section="wishlist" aria-controls="sectionContent" aria-pressed="false">之后想吃</button>
+        <button id="pickerSectionBtn" class="mode-btn active" type="button" data-section="picker" aria-controls="sectionContent" aria-pressed="true">是啊吃什么</button>
+        <button id="snacksSectionBtn" class="mode-btn" type="button" data-section="snacks" aria-controls="sectionContent" aria-pressed="false">饭后加餐</button>
     </nav>
 
     <div id="pickerPanel" class="container">
 
-        <!-- 左侧：控件区 -->
-        <div class="left-panel normal-mode-panel">
-            <!-- 添加 -->
+        <!-- 三份清单共享输入；切换动画只作用于下方 sectionContent。 -->
+        <div id="sharedComposer" class="shared-composer normal-mode-panel">
+            <div class="composer-toolbar">
+                <button id="formatHelpBtn" class="format-help" title="输入格式说明" aria-label="输入格式说明">?</button>
+                <span class="category-format-hint">类别可留空，不含空格</span>
+                <span class="composer-guide-actions">
+                    <button id="neverShowGuideBtn" class="never-show-guide" title="以后不再显示新手教学提示">不再提示</button>
+                    <button id="newUserGuideBtn" class="new-user-guide" title="进入教学页面">教学💡</button>
+                </span>
+            </div>
             <div class="row">
                 <div class="item-input-group">
-                    <button id="formatHelpBtn" class="format-help" title="输入格式说明">?</button>
-                    <span class="category-format-hint">类别可留空，不含空格</span>
-                    <button id="newUserGuideBtn" class="new-user-guide" title="进入教学页面">教学💡</button>
-                    <button id="neverShowGuideBtn" class="never-show-guide" title="以后不再显示新手教学提示">不再提示</button>
                     <input id="categoryInput" class="category-input" type="text" placeholder="空则无类别" maxlength="20" aria-label="类别，可留空，最多20字">
                     <button id="categoryDropdownBtn" class="category-dropdown-btn" title="从已有类别中选择">▾</button>
                     <span class="input-separator"></span>
@@ -40,102 +43,101 @@
                 <button id="addBtn" class="primary">添加</button>
             </div>
 
-            <!-- 抽取 -->
-            <button id="pickBtn" class="pick">抽一个</button>
-            <div id="result" class="result"></div>
-            <button id="toggleResultBtn" class="toggle-result">确定</button>
-            <section id="drawHistoryPanel" class="draw-history-panel collapsed">
-                <div class="draw-history-header">
-                    <strong>抽取历史</strong>
-                    <span class="draw-history-actions">
-                        <button id="toggleDrawHistoryBtn" class="toggle-history-btn">展开</button>
-                        <button id="clearDrawHistoryBtn" class="clear-history-btn">全部删除</button>
-                    </span>
-                </div>
-                <ul id="drawHistoryList" class="draw-history-list"></ul>
-            </section>
+        </div>
 
-            <aside id="teachingPanel" class="teaching-panel">
-                <div class="teaching-panel-card">
-                    <div id="teachingKicker" class="teaching-kicker">0</div>
-                    <h2 id="teachingTitle">欢迎进入教学页面</h2>
-                    <p id="teachingDesc">这里使用独立的教学列表演示“是啊吃什么”的分类抽取与管理，不影响真实记录；退出后可切换“之后想吃”和“饭后加餐”记录其他想吃的东西。</p>
-                    <div class="teaching-actions">
-                        <button id="teachingPrevBtn" class="teaching-prev-btn">上一步</button>
-                        <button id="teachingNextBtn" class="teaching-next-btn">下一步</button>
+        <aside id="teachingPanel" class="teaching-panel">
+            <div class="teaching-panel-card">
+                <div id="teachingKicker" class="teaching-kicker">0</div>
+                <h2 id="teachingTitle">欢迎进入教学页面</h2>
+                <p id="teachingDesc">这里使用独立的教学列表演示“是啊吃什么”的分类抽取与管理，不影响真实记录；退出后可切换“之后想吃”和“饭后加餐”记录其他想吃的东西。</p>
+                <div class="teaching-actions">
+                    <button id="teachingPrevBtn" class="teaching-prev-btn">上一步</button>
+                    <button id="teachingNextBtn" class="teaching-next-btn">下一步</button>
+                </div>
+            </div>
+        </aside>
+
+        <div id="sectionListViewport" class="section-list-viewport">
+            <section id="sectionContent" class="section-content" aria-labelledby="sectionTitle" aria-describedby="sectionDescription">
+                <header class="section-header">
+                    <h2 id="sectionTitle">是啊吃什么</h2>
+                    <span id="count" class="count">共 0 项</span>
+                </header>
+                <p id="sectionDescription" class="section-description">分类记录你的心头好，抽一个决定今天吃什么。</p>
+
+                <div id="pickerTools" class="picker-tools picker-only">
+                    <div id="resultFrame" class="result-frame" aria-label="条目滚动展示窗口">
+                        <span class="result-pointer result-pointer-left" aria-hidden="true"></span>
+                        <div id="result" class="result"></div>
+                        <span class="result-pointer result-pointer-right" aria-hidden="true"></span>
+                    </div>
+                    <div id="drawActions" class="draw-actions" data-state="idle">
+                        <button id="pickBtn" class="pick">抽一个</button>
+                        <button id="toggleResultBtn" class="toggle-result" tabindex="-1" aria-hidden="true">确定</button>
+                    </div>
+                    <section id="drawHistoryPanel" class="draw-history-panel collapsed">
+                        <div class="draw-history-header">
+                            <strong>抽取历史</strong>
+                            <span class="draw-history-actions">
+                                <button id="toggleDrawHistoryBtn" class="toggle-history-btn">展开</button>
+                                <button id="clearDrawHistoryBtn" class="clear-history-btn">全部删除</button>
+                            </span>
+                        </div>
+                        <ul id="drawHistoryList" class="draw-history-list"></ul>
+                    </section>
+                </div>
+
+                <!-- 三个分区共用的分类列表与导入、导出、分享菜单。 -->
+                <div class="right-panel">
+                    <div id="listHeader" class="list-header" title="展开或收起清单">
+                        <span class="arrow" aria-hidden="true">▼</span>
+                        <span class="header-right">
+                            <button class="draw-scope-all-btn active picker-only" id="drawScopeAllBtn" title="抽取范围全选 / 全不选">全选</button>
+                            <button class="expand-all-btn" id="expandAllBtn" title="全部展开">全展开</button>
+                            <span class="settings-wrap menu-wrap">
+                                <button class="settings-btn menu-btn" id="settingsBtn" title="列表设置">☰</button>
+                                <span id="settingsMenu" class="settings-menu menu-dropdown">
+                                    <div class="draw-duration-setting menu-control picker-only" title="抽取动画时长">
+                                        <span>抽取时间</span>
+                                        <span class="draw-duration-stepper">
+                                            <button id="drawDurationMinusBtn" type="button" aria-label="减少抽取时间">−</button>
+                                            <span id="drawDurationValue" class="draw-duration-value">2.5s</span>
+                                            <button id="drawDurationPlusBtn" type="button" aria-label="增加抽取时间">+</button>
+                                        </span>
+                                    </div>
+                                    <span class="menu-divider picker-only"></span>
+                                    <button class="import-btn menu-item" id="importBtn" title="导入JSON文件">导入JSON</button>
+                                    <button class="export-btn menu-item" id="exportBtn" title="导出JSON文件">导出JSON</button>
+                                    <span class="menu-divider"></span>
+                                    <button class="share-code-gen-btn menu-item" id="shareCodeGenBtn" title="生成分享码">生成分享码</button>
+                                    <button class="share-code-imp-btn menu-item" id="shareCodeImpBtn" title="导入分享码">导入分享码</button>
+                                    <span class="menu-divider picker-only"></span>
+                                    <button class="stats-menu-btn menu-item picker-only" id="statsBtn" title="查看抽取统计">统计</button>
+                                </span>
+                            </span>
+                        </span>
+                    </div>
+                    <div id="listBody" class="list-body">
+                        <div class="list-search-row">
+                            <input id="listSearchInput" class="list-search" type="text" placeholder="搜索">
+                            <button id="iAteBtn" class="i-ate-btn picker-only" title="记录今天吃了什么">今天我吃了……</button>
+                        </div>
+                        <ul id="list"></ul>
+                    </div>
+                    <div class="list-footer">
+                        <span id="exportStatus" class="export-status clean">已保存</span>
                     </div>
                 </div>
-            </aside>
+                <p id="sectionStorageNote" class="section-storage-note" role="status">当前清单独立保存在此浏览器，三个清单格式一致、记录互不混合。</p>
+            </section>
         </div>
-
-        <!-- 右侧：待抽列表 -->
-        <div class="right-panel">
-            <div id="listHeader" class="list-header">
-                <strong><span class="arrow">▼</span>你的心头好</strong>
-                <span class="header-right">
-                    <button class="draw-scope-all-btn active" id="drawScopeAllBtn" title="抽取范围全选 / 全不选">全选</button>
-                    <button class="expand-all-btn" id="expandAllBtn" title="全部展开">全展开</button>
-                    <span class="settings-wrap menu-wrap">
-                        <button class="settings-btn menu-btn" id="settingsBtn" title="列表设置">☰</button>
-                        <span id="settingsMenu" class="settings-menu menu-dropdown">
-                            <div class="draw-duration-setting menu-control" title="抽取动画时长">
-                                <span>抽取时间</span>
-                                <span class="draw-duration-stepper">
-                                    <button id="drawDurationMinusBtn" type="button" aria-label="减少抽取时间">−</button>
-                                    <span id="drawDurationValue" class="draw-duration-value">2.5s</span>
-                                    <button id="drawDurationPlusBtn" type="button" aria-label="增加抽取时间">+</button>
-                                </span>
-                            </div>
-                            <span class="menu-divider"></span>
-                            <button class="import-btn menu-item" id="importBtn" title="导入JSON文件">导入JSON</button>
-                            <button class="export-btn menu-item" id="exportBtn" title="导出JSON文件">导出JSON</button>
-                            <span class="menu-divider"></span>
-                            <button class="share-code-gen-btn menu-item" id="shareCodeGenBtn" title="生成分享码">生成分享码</button>
-                            <button class="share-code-imp-btn menu-item" id="shareCodeImpBtn" title="导入分享码">导入分享码</button>
-                            <span class="menu-divider"></span>
-                            <button class="stats-menu-btn menu-item" id="statsBtn" title="查看抽取统计">统计</button>
-                        </span>
-                    </span>
-                    <span id="count" class="count">共 0 项</span>
-                </span>
-            </div>
-            <div id="listBody" class="list-body">
-                <div class="list-search-row">
-                    <input id="listSearchInput" class="list-search" type="text" placeholder="搜索">
-                    <button id="iAteBtn" class="i-ate-btn" title="记录今天吃了什么">今天我吃了……</button>
-                </div>
-                <ul id="list"></ul>
-            </div>
-            <div class="list-footer">
-                <span id="exportStatus" class="export-status clean">已保存</span>
-            </div>
-        </div>
-
     </div>
 
-    <section id="lightListPanel" class="light-list-panel" aria-labelledby="lightListTitle" hidden>
-        <header class="light-list-header">
-            <h2 id="lightListTitle">之后想吃</h2>
-            <span id="lightListCount" class="light-list-count">共 0 项</span>
-        </header>
-        <p id="lightListDescription" class="light-list-description">记下之后想吃的，按你的心意排序。</p>
-        <form id="lightListForm" class="light-list-form">
-            <label class="visually-hidden" for="lightListInput">添加清单项目，最多80字</label>
-            <input id="lightListInput" type="text" maxlength="80" placeholder="想吃什么？回车添加" autocomplete="off" aria-describedby="lightListError">
-            <button class="primary" type="submit">添加</button>
-        </form>
-        <p id="lightListError" class="light-list-error" role="alert"></p>
-        <p id="lightListSortHint" class="light-list-sort-hint">电脑拖动条目排序；手机长按左侧手柄拖动，也可使用上移、下移按钮。</p>
-        <ul id="lightListItems" class="light-list-items" aria-describedby="lightListSortHint"></ul>
-        <p id="lightListStatus" class="visually-hidden" role="status" aria-live="polite"></p>
-        <p id="lightListStorageHint" class="light-list-storage-hint">两份清单各自保存在当前浏览器，暂不包含在主列表的导出或分享码中；清除浏览器数据会丢失，请自行备份重要内容。</p>
-    </section>
-
-    <p id="backupHint" class="backup-hint">建议使用完毕后导出分享码备份，以免数据丢失</p>
+    <p id="backupHint" class="backup-hint">建议使用完毕后导出当前清单或生成分享码备份，以免数据丢失</p>
 
     <input id="importFileInput" type="file" accept="application/json,.json" hidden>
 
-    <div id="exportReminder" class="export-reminder">列表已更改，可导出备份</div>
+    <div id="exportReminder" class="export-reminder">当前清单已更改，可导出备份</div>
     <div id="importUndoPrompt" class="import-undo-prompt">
         <span>已导入新列表，抽取前可撤回。</span>
         <button id="undoImportBtn">撤回导入</button>
@@ -143,7 +145,7 @@
 
     <div id="importDialogOverlay" class="import-dialog-overlay center-modal">
         <div class="import-dialog-card">
-            <h2>导入待抽列表</h2>
+            <h2>导入当前清单</h2>
             <p id="importDialogText">请选择导入方式。</p>
             <div class="import-dialog-actions">
                 <button id="mergeImportBtn">合并导入</button>
@@ -313,9 +315,10 @@
 
     <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
-    <div class="version-label">110504</div>
+    <div class="version-label">110807</div>
 
     <script src="assets/app/data.js"></script>
+    <script src="assets/app/list-store.js"></script>
     <script src="assets/app/input-guard.js"></script>
     <script src="assets/app/app.js"></script>
     <script src="assets/app/sections.js"></script>

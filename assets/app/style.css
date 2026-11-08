@@ -13,8 +13,8 @@
 
 html,
 body {
-    height: 100%;
-    overflow: hidden;
+    min-height: 100%;
+    overflow-x: clip;
     /* 禁用双击放大。touch-action 按"自身与祖先的交集"生效，
        li .drag-handle 在移动端单独设了 none，交集仍是 none，拖动不受影响。 */
     touch-action: manipulation;
@@ -32,7 +32,7 @@ select {
 
 body {
     font-family: -apple-system, "Microsoft YaHei", sans-serif;
-    max-width: 1180px;
+    min-height: 100vh;
     margin: 0 auto;
     padding: 20px 24px;
     background: #1a1a2e;
@@ -97,11 +97,6 @@ body.teaching-mode .new-user-guide {
     display: none;
 }
 
-body.teaching-mode .container {
-    align-items: flex-start;
-    gap: 24px;
-}
-
 body.teaching-mode .draw-history-panel {
     display: none;
 }
@@ -109,7 +104,7 @@ body.teaching-mode .draw-history-panel {
 .teaching-panel {
     display: none;
     width: 100%;
-    margin-top: 18px;
+    margin-top: 0;
 }
 
 body.teaching-mode .teaching-panel {
@@ -514,49 +509,113 @@ body.page-home-in .container {
     transform: translateY(-1px);
 }
 
-/* ===== 两栏布局 ===== */
+/* ===== 三分区共用的纵向主卡片 ===== */
 .container {
     display: flex;
-    justify-content: center;
-    gap: 24px;
-    flex: 1;
-    min-height: 0;
+    flex-direction: column;
+    gap: 20px;
+    width: min(680px, 100%);
+    margin: 12px auto 0;
+    padding: 24px;
+    border: 1px solid #34345c;
+    border-radius: var(--radius-panel);
+    background: rgba(22, 33, 62, 0.35);
+    /* 按外框圆角裁切滑入内容和退场快照；clip 不创建额外滚动容器。 */
     overflow: hidden;
+    overflow: clip;
 }
 
-.left-panel {
-    flex: 0 0 400px;
+.shared-composer {
     display: flex;
     flex-direction: column;
-    justify-content: center;
-    position: relative;
-}
-
-body.teaching-mode .left-panel,
-body.teaching-mode .right-panel {
-    justify-content: flex-start;
-    padding-top: 120px;
-}
-
-body.teaching-mode .right-panel {
-    height: 100%;
-}
-
-.right-panel {
-    flex: 0 0 520px;
-    max-width: 520px;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
+    width: 100%;
     min-width: 0;
-    min-height: 0;
+    position: relative;
+    z-index: 2;
 }
 
-/* ===== 左侧：控件 ===== */
-.format-help {
+.composer-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+    min-height: 26px;
+}
+
+.composer-guide-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+}
+
+/* 不裁切纵向菜单，也不建立列表自己的滚动容器。
+   分区切换由 JS 仅对 sectionContent 的 transform 执行动画。 */
+.section-list-viewport {
+    position: relative;
+    width: 100%;
+    min-width: 0;
+}
+
+.section-content {
+    position: relative;
+    width: 100%;
+    min-width: 0;
+}
+
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 10px;
+}
+
+.section-header h2 {
+    font-size: 22px;
+    color: #eeeef8;
+}
+
+.section-header .count {
+    flex-shrink: 0;
+    color: #9999b5;
+    font-size: 13px;
+}
+
+.section-description {
+    margin-bottom: 18px;
+    font-size: 14px;
+    line-height: 1.6;
+    color: #aaaac0;
+}
+
+.picker-tools,
+.right-panel {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    min-width: 0;
+}
+
+.section-slide-ghost {
     position: absolute;
-    left: -30px;
-    top: -32px;
+    inset: 0 auto auto 0;
+    width: 100%;
+    pointer-events: none;
+    user-select: none;
+}
+
+body[data-section='wishlist'] .picker-only:not(.section-slide-ghost *),
+body[data-section='snacks'] .picker-only:not(.section-slide-ghost *),
+.section-slide-ghost[data-section='wishlist'] .picker-only,
+.section-slide-ghost[data-section='snacks'] .picker-only {
+    display: none !important;
+}
+
+/* ===== 共享输入与帮助入口 ===== */
+.format-help {
+    flex: 0 0 auto;
     width: 22px;
     height: 22px;
     padding: 0;
@@ -1245,7 +1304,7 @@ body.teaching-mode .right-panel {
 .row {
     display: flex;
     gap: 8px;
-    margin-bottom: 16px;
+    margin: 0;
 }
 
 .item-input-group {
@@ -1274,9 +1333,6 @@ body.teaching-mode .right-panel {
 }
 
 .category-format-hint {
-    position: absolute;
-    left: 8px;
-    top: -18px;
     font-size: 11px;
     line-height: 1;
     color: #777;
@@ -1426,9 +1482,7 @@ button:hover {
 }
 
 .new-user-guide {
-    position: absolute;
-    right: -76px;
-    top: -34px;
+    position: relative;
     height: 26px;
     padding: 3px 12px;
     border-radius: 999px;
@@ -1449,15 +1503,13 @@ body.guide-attention .new-user-guide {
 body.guide-attention .new-user-guide::before {
     content: '点击这里进入新手教学';
     position: absolute;
-    left: 18%;
+    right: 0;
     bottom: calc(100% + 10px);
-    transform: translateX(-50%);
     display: flex;
     align-items: flex-start;
     justify-content: center;
     width: max-content;
-    min-width: 150px;
-    height: 58px;
+    max-width: min(280px, calc(100vw - 48px));
     padding: 8px 14px;
     border-radius: 16px;
     border: 1px solid rgba(246, 210, 102, 0.45);
@@ -1476,9 +1528,8 @@ body.guide-attention .new-user-guide::before {
 body.guide-attention .new-user-guide::after {
     content: '';
     position: absolute;
-    left: 18%;
+    right: 24px;
     bottom: calc(100% + 4px);
-    transform: translateX(-50%);
     width: 0;
     height: 0;
     border-left: 6px solid transparent;
@@ -1513,9 +1564,6 @@ body.guide-tip-fading .new-user-guide::after {
 }
 
 .never-show-guide {
-    position: absolute;
-    right: -76px;
-    top: -76px;
     display: none;
     height: 22px;
     padding: 2px 9px;
@@ -1784,21 +1832,116 @@ button.pick:hover {
     color: transparent;
 }
 
-button.toggle-result {
-    display: none;
-    align-self: center;
-    padding: 5px 12px;
-    font-size: 12px;
-    background: transparent;
-    border-color: #444;
-    color: #888;
-    margin-bottom: 6px;
+.result-frame {
+    position: relative;
+    width: 100%;
+    height: 112px;
+    margin-bottom: 12px;
+    padding: 0 32px;
+    overflow: hidden;
+    border: 1px solid #34345c;
+    border-radius: var(--radius-item);
+    background: linear-gradient(180deg, #17172b, #1e2a36 50%, #17172b);
 }
 
-button.toggle-result:hover {
-    color: #ddd;
-    border-color: #777;
-    background: #242444;
+.result-frame .result {
+    height: 110px;
+    min-height: 0;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: clamp(18px, 4.8vw, 28px);
+    line-height: 1.15;
+}
+
+.result-frame .result-text {
+    max-height: 110px;
+    overflow: hidden;
+}
+
+/* 保持原窗口高度，上下邻项在边缘露出；中心槽对齐两侧三角。 */
+.result-frame .result {
+    display: block;
+    mask-image: linear-gradient(transparent, #000 22%, #000 78%, transparent);
+    -webkit-mask-image: linear-gradient(transparent, #000 22%, #000 78%, transparent);
+}
+.idle-reel-track { width: 100%; margin-top: -5px; }
+.idle-reel-row {
+    height: 40px;
+    line-height: 40px;
+    padding: 0 2px;
+    font-size: inherit;
+    font-weight: inherit;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.result-pointer {
+    position: absolute;
+    top: 50%;
+    z-index: 2;
+    width: 0;
+    height: 0;
+    transform: translateY(-50%);
+    border-top: 7px solid transparent;
+    border-bottom: 7px solid transparent;
+    pointer-events: none;
+}
+.result-pointer-left { left: 12px; border-left: 9px solid #f6d266; }
+.result-pointer-right { right: 12px; border-right: 9px solid #f6d266; }
+
+.draw-actions {
+    display: flex;
+    gap: 0;
+    width: 100%;
+    margin-bottom: 20px;
+    border-radius: var(--radius-control);
+    overflow: hidden;
+}
+.draw-actions button.pick,
+.draw-actions button.toggle-result {
+    width: auto;
+    min-width: 0;
+    height: 48px;
+    margin: 0;
+    padding: 8px 12px;
+    border-radius: 0;
+    font-size: 18px;
+    white-space: nowrap;
+    transition: flex-basis 220ms ease, opacity 180ms ease, background 120ms ease;
+}
+.draw-actions button.pick { flex: 1 1 100%; }
+.draw-actions button.toggle-result {
+    display: block !important;
+    flex: 0 0 0%;
+    width: 0;
+    padding-left: 0;
+    padding-right: 0;
+    border: 0;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    background: #23465a;
+    color: #e6f1f7;
+}
+.draw-actions[data-state='result'] button.pick { flex-basis: 50%; }
+.draw-actions[data-state='result'] button.toggle-result {
+    flex-basis: 50%;
+    width: auto;
+    padding-left: 12px;
+    padding-right: 12px;
+    border-left: 1px solid rgba(255,255,255,.15);
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+}
+.draw-actions button.toggle-result:hover { background: #2e5971; }
+
+@media (prefers-reduced-motion: reduce) {
+    .draw-actions button.pick,
+    .draw-actions button.toggle-result { transition: none; }
 }
 
 .empty strong {
@@ -2010,7 +2153,7 @@ button.pick:disabled {
     cursor: not-allowed;
 }
 
-/* ===== 右侧：待抽列表 ===== */
+/* ===== 共用分类列表 ===== */
 .list-header {
     display: flex;
     justify-content: space-between;
@@ -2040,12 +2183,10 @@ button.pick:disabled {
 .list-header .header-right {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
+    justify-content: flex-end;
     gap: 10px;
-}
-
-.list-header span.count {
-    color: #888;
-    font-size: 14px;
+    margin-left: auto;
 }
 
 .list-header button.sort-btn,
@@ -2283,32 +2424,7 @@ button.pick:disabled {
 }
 
 .list-body {
-    flex: 0 1 auto;
-    overflow-y: auto;
-    min-height: 0;
-    padding-right: 4px;
-}
-
-/* 滚动条样式 */
-.list-body::-webkit-scrollbar {
-    width: 6px;
-}
-
-.list-body::-webkit-scrollbar-track {
-    background: transparent;
-}
-
-.list-body::-webkit-scrollbar-thumb {
-    background: #444;
-    border-radius: 3px;
-}
-
-.list-body::-webkit-scrollbar-thumb:hover {
-    background: #666;
-}
-
-body.teaching-mode .list-body {
-    flex: 1 1 auto;
+    width: 100%;
 }
 
 .list-body.collapsed {
@@ -2700,7 +2816,7 @@ li.editing .item-drag-handle {
     text-align: center;
 }
 
-/* 主抽取页与轻清单共用圆角层级；限定选择器，不改磨砂弹窗及胶囊/圆形控件。 */
+/* 三分区共用圆角层级；限定选择器，不改磨砂弹窗及胶囊/圆形控件。 */
 #pickerPanel :is(li, .draw-history-item, .draw-history-empty) {
     border-radius: var(--radius-item);
 }
@@ -2711,12 +2827,11 @@ li.editing .item-drag-handle {
     .settings-menu.menu-dropdown, .settings-menu .menu-item),
 #pickerPanel .list-header :is(button.sort-btn, button.expand-all-btn, button.draw-scope-all-btn),
 .item-popover,
-.item-popover-item,
-.light-list-form :is(input, button) {
+.item-popover-item {
     border-radius: var(--radius-control);
 }
 
-/* ===== 独立轻清单 ===== */
+/* 全局可见性与键盘焦点。 */
 [hidden] {
     display: none !important;
 }
@@ -2734,195 +2849,38 @@ li.editing .item-drag-handle {
 }
 
 .mode-btn:focus-visible,
-.light-list-panel button:focus-visible {
+#pickerPanel button:focus-visible {
     outline: 2px solid #9fd0ff;
     outline-offset: 2px;
 }
 
-.light-list-panel {
-    display: flex;
-    flex-direction: column;
-    flex: 1;
-    min-height: 0;
-    width: min(680px, 100%);
-    margin: 12px auto 0;
-    padding: 24px;
-    border: 1px solid #34345c;
-    border-radius: var(--radius-panel);
-    background: rgba(22, 33, 62, 0.35);
-}
-
-.light-list-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 10px;
-}
-
-.light-list-header h2 {
-    font-size: 22px;
-    color: #eeeef8;
-}
-
-.light-list-count {
-    color: #9999b5;
-    font-size: 13px;
-}
-
-.light-list-description {
-    margin-bottom: 18px;
-    font-size: 14px;
-    line-height: 1.6;
-    color: #aaaac0;
-}
-
-.light-list-form {
-    display: flex;
-    gap: 8px;
-}
-
-.light-list-form input {
-    min-width: 0;
-}
-
-.light-list-error {
-    min-height: 22px;
-    margin-top: 5px;
-    color: #ff9c9c;
-    font-size: 13px;
-    line-height: 1.5;
-}
-
-.light-list-sort-hint,
-.light-list-storage-hint {
+.section-storage-note {
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid #30304c;
     color: #9393b0;
     font-size: 12px;
     line-height: 1.7;
 }
 
-.light-list-sort-hint {
-    margin-bottom: 12px;
-}
-
-.light-list-storage-hint {
-    flex-shrink: 0;
-    margin-top: 14px;
-    padding-top: 12px;
-    border-top: 1px solid #30304c;
-}
-
-.light-list-items {
-    flex: 1;
-    min-height: 100px;
-    overflow-y: auto;
-    padding: 4px;
-    overscroll-behavior: contain;
-}
-
-li.light-list-item {
-    position: relative;
-    gap: 8px;
-    padding: 8px;
-    margin: 0 0 8px;
-    min-height: 52px;
-    border-radius: var(--radius-item);
-    cursor: grab;
-}
-
-.light-list-name {
-    flex: 1;
-    min-width: 0;
-    overflow-wrap: anywhere;
-    line-height: 1.5;
-}
-
-.light-list-actions {
-    display: inline-flex;
-    align-items: center;
-    flex: 0 0 auto;
-    gap: 4px;
-}
-
-.light-list-actions button,
-.light-list-handle {
-    min-width: 36px;
-    min-height: 36px;
-    padding: 4px 8px;
-    border-radius: var(--radius-control);
-    border-color: #41415d;
-    background: transparent;
-}
-
-.light-list-actions button:disabled {
-    opacity: 0.3;
-    cursor: not-allowed;
-}
-
-.light-list-actions button:hover:not(:disabled) {
-    background: #343453;
-}
-
-.light-list-actions .light-list-delete {
-    color: #eea09b;
-}
-
-.light-list-handle {
-    flex: 0 0 auto;
-    color: #8c8caf;
-    font-size: 22px;
-    cursor: grab;
-    touch-action: none;
-    user-select: none;
-    -webkit-user-select: none;
-    -webkit-touch-callout: none;
-}
-
-li.light-dragging {
-    opacity: 0.55;
-    border-color: #74b9ff;
-    background: #2c3552;
-    cursor: grabbing;
-    user-select: none;
-}
-
-li.light-insert-before::before,
-li.light-insert-after::after {
-    content: '';
-    position: absolute;
-    left: 0;
-    right: 0;
-    height: 3px;
-    border-radius: 3px;
-    background: #74b9ff;
-    box-shadow: 0 0 8px rgba(74, 144, 217, 0.6);
-    pointer-events: none;
-}
-
-li.light-insert-before::before { top: -6px; }
-li.light-insert-after::after { bottom: -6px; }
-
-li.light-list-empty {
-    display: block;
-    padding: 28px 12px;
-    border: 1px dashed #41415d;
-    background: transparent;
+.backup-hint {
+    width: min(680px, 100%);
+    margin: 8px auto 0;
+    padding: 8px 16px 18px;
     text-align: center;
-    color: #9999b5;
-    font-size: 14px;
+    font-size: 12px;
     line-height: 1.7;
+    color: #8899bb;
+    opacity: 0.75;
 }
 
-/* 中等屏幕保留两栏但允许收缩，避免分类框加宽后溢出。 */
-@media (min-width: 641px) and (max-width: 1020px) {
-    .left-panel { flex: 0 1 400px; min-width: 0; }
-    .right-panel { flex: 1 1 420px; }
+body.teaching-mode .backup-hint {
+    display: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
     .mode-switch::before,
     .mode-btn,
-    .light-list-item,
     .center-modal,
     .center-modal.show,
     .center-modal > :first-child {
@@ -2930,45 +2888,19 @@ li.light-list-empty {
     }
 }
 
-/* ===== 响应式：窄屏时上下排列 ===== */
-.backup-hint {
-    text-align: center;
-    font-size: 12px;
-    color: #8899bb;
-    padding: 8px 16px;
-    opacity: 0.75;
-    margin: 0 auto;
-    width: 100%;
-}
-
+/* 窄屏只调整间距、输入宽度和触摸热区，不切换布局结构。 */
 @media (max-width: 640px) {
-    html,
     body {
-        height: auto;
-        min-height: 100%;
-        overflow-y: auto;
-        overflow-x: hidden;
+        padding: 12px;
     }
 
-    body {
-        padding: 12px 12px;
-    }
-
-    body > h1 {
-        margin-bottom: 24px;
-    }
-
-    .mode-switch {
-        width: min(300px, calc(100% - 16px));
+    .container {
+        padding: 18px 12px;
+        gap: 16px;
     }
 
     .mode-btn {
         padding-inline: 4px;
-    }
-
-    /* 教学页不用分区胶囊，保留标题与副标题的原有关系。 */
-    body.teaching-mode > h1 {
-        margin-bottom: 12px;
     }
 
     body.teaching-mode .back-from-teaching {
@@ -2977,52 +2909,13 @@ li.light-list-empty {
         margin-bottom: 12px;
     }
 
-    .container {
-        flex-direction: column;
-        gap: 16px;
-        flex: 0 0 auto;
-        min-height: 0;
-        overflow: visible;
-    }
-
-    .left-panel {
-        flex: 0 0 auto;
-    }
-
-    body.teaching-mode .container {
-        align-items: stretch;
-        gap: 12px;
-    }
-
-    body.teaching-mode .left-panel,
-    body.teaching-mode .right-panel {
-        width: 100%;
-        max-width: none;
-        padding-top: 0;
-    }
-
-    body.teaching-mode .row {
-        margin-top: 48px;
-    }
-
-    body.teaching-mode .right-panel {
-        flex: 0 0 auto;
-        height: auto;
-        min-height: 0;
+    .composer-toolbar,
+    .composer-guide-actions {
+        gap: 6px;
     }
 
     .row {
-        flex-direction: row;
-        align-items: stretch;
-        flex-wrap: nowrap;
-        gap: 8px;
-        /* 上方独立预留教学/帮助入口和类别提示两行，不占用胶囊及输入区域。 */
-        margin-top: 52px;
-    }
-
-    .row > .item-input-group {
-        flex: 1 1 0;
-        min-width: 0;
+        gap: 6px;
     }
 
     .row > button {
@@ -3033,71 +2926,22 @@ li.light-list-empty {
     .item-input-group .name-input {
         flex: 1 1 0;
         width: 0;
-        min-width: 0;
         padding-inline: 8px;
     }
 
-    .format-help {
-        left: 0;
-        top: -48px;
+    .category-input {
+        flex: 0 1 clamp(64px, 20vw, 88px) !important;
+        width: clamp(64px, 20vw, 88px);
+        max-width: 88px;
+        padding-left: 4px;
     }
 
-    .new-user-guide {
-        right: 0;
-        top: -50px;
+    .category-dropdown-btn {
+        width: 20px;
     }
 
-    .never-show-guide {
-        right: 88px;
-        top: -48px;
-        z-index: 2;
-    }
-
-    body.guide-attention:not(.teaching-mode) .row {
-        /* 首次引导气泡单独占一行，不向上覆盖分区胶囊。 */
-        margin-top: 88px;
-    }
-
-    body.guide-attention:not(.teaching-mode) .never-show-guide {
-        display: block;
-    }
-
-    body.teaching-mode .never-show-guide {
-        display: none;
-    }
-
-    body.guide-attention .new-user-guide::before {
-        right: 0;
-        left: auto;
-        transform: none;
-        min-width: 0;
-        width: max-content;
-        max-width: calc(100vw - 32px);
-        height: auto;
-        padding: 8px 12px;
-        border-radius: var(--radius-item);
-        line-height: 1.4;
-        white-space: normal;
-    }
-
-    body.guide-attention .new-user-guide::after {
-        right: 24px;
-        left: auto;
-        transform: none;
-    }
-
-    .right-panel {
-        flex: 0 0 auto;
-        width: 100%;
-        max-width: none;
-        min-height: 0;
-    }
-
-    .list-body {
-        flex: 0 0 auto;
-        overflow: visible;
-        max-height: none;
-        padding-right: 0;
+    .list-header .header-right {
+        gap: 6px;
     }
 
     li,
@@ -3115,76 +2959,4 @@ li.light-list-empty {
         margin: -8px 0 -8px -4px;
         touch-action: none;
     }
-
-    .backup-hint {
-        flex: 0 0 auto;
-        margin-top: 12px;
-        padding-bottom: 18px;
-    }
-
-    body.teaching-mode .backup-hint {
-        display: none;
-    }
-
-    .category-input {
-        flex: 0 1 clamp(64px, 20vw, 88px) !important;
-        width: clamp(64px, 20vw, 88px);
-        max-width: 88px;
-        padding-left: 4px;
-    }
-
-    .category-dropdown-btn {
-        width: 20px;
-    }
-
-    .category-format-hint {
-        left: 0;
-        top: -18px;
-        white-space: nowrap;
-    }
-
-    .list-header {
-        flex-wrap: wrap;
-        gap: 8px;
-    }
-
-    .list-header .header-right {
-        flex-wrap: wrap;
-        justify-content: flex-end;
-        gap: 6px;
-        margin-left: auto;
-    }
-
-    .light-list-panel {
-        flex: 0 0 auto;
-        margin-top: 4px;
-        padding: 18px 12px;
-    }
-
-    .light-list-items {
-        flex: 0 0 auto;
-        overflow: visible;
-        padding: 4px 0;
-    }
-
-    li.light-list-item {
-        gap: 5px;
-        padding: 7px 5px;
-    }
-
-    .light-list-actions {
-        gap: 2px;
-    }
-
-    .light-list-actions button,
-    .light-list-handle {
-        min-width: 38px;
-        min-height: 44px;
-        padding: 4px 6px;
-    }
-
-    .light-list-handle {
-        min-width: 32px;
-    }
-
 }

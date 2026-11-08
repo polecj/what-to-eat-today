@@ -1,386 +1,138 @@
+/* 共用输入与分类列表，仅切换当前清单的数据和下方内容。 */
 (() => {
     'use strict';
-
-    const sections = {
-        wishlist: {
-            title: '之后想吃',
-            description: '记下之后想吃的，按你的心意排序。',
-            placeholder: '想吃什么？回车添加',
-            key: 'picker_wishlist_items'
-        },
-        snacks: {
-            title: '饭后加餐',
-            description: '路边摊、小吃或饭后想加的一口，都记在这里。',
-            placeholder: '加餐吃什么？回车添加',
-            key: 'picker_snacks_items'
-        }
+    const definitions = {
+        wishlist: { title: '之后想吃', description: '记下平时发现的好店，按类别整理，之后慢慢去吃。' },
+        picker: { title: '是啊吃什么', description: '把你的心头好按类别收好，今天吃什么交给抽取。' },
+        snacks: { title: '饭后加餐', description: '路边摊、小吃与饭后加餐，也能分门别类记下来。' }
     };
+    const order = ['wishlist', 'picker', 'snacks'];
+    const buttons = [...document.querySelectorAll('.mode-switch [data-section]')];
     const nav = document.querySelector('.mode-switch');
-    const buttons = Array.from(nav.querySelectorAll('[data-section]'));
-    const picker = document.getElementById('pickerPanel');
-    const panel = document.getElementById('lightListPanel');
-    const title = document.getElementById('lightListTitle');
-    const description = document.getElementById('lightListDescription');
-    const form = document.getElementById('lightListForm');
-    const input = document.getElementById('lightListInput');
-    FoodInput.bind(input, 'name');
-    const list = document.getElementById('lightListItems');
-    const count = document.getElementById('lightListCount');
-    const error = document.getElementById('lightListError');
-    const status = document.getElementById('lightListStatus');
-    const backupHint = document.getElementById('backupHint');
-    const drafts = { wishlist: '', snacks: '' };
-    const loadErrors = {};
-    const lists = { wishlist: load('wishlist'), snacks: load('snacks') };
-    let current = 'picker';
-    let drag = null;
-    let touch = null;
-    let scrollFrame = 0;
-    let skipClickUntil = 0;
+    const content = document.getElementById('sectionContent');
+    const viewport = document.getElementById('sectionListViewport');
+    let animation = null;
+    let ghostAnimation = null;
+    let ghost = null;
 
-    function load(section) {
+    function capture() {
+        return { items: [...items], categoryOrder: [...categoryOrder], collapsedCategories: [...collapsedCategories],
+            uncheckedCategories: [...uncheckedCategories], hasUnsavedExport, listSearchQuery,
+            searchCollapsedCategories: new Set(searchCollapsedCategories), newItemsUntilNextDraw: new Set(newItemsUntilNextDraw),
+            undoImportState, latestResultText, resultHidden, resultMarkup: document.getElementById('result').innerHTML,
+            confirmVisible: document.getElementById('toggleResultBtn').style.display };
+    }
+    function restore(state) {
+        items = [...state.items];
+        categoryOrder = [...state.categoryOrder];
+        collapsedCategories = [...state.collapsedCategories];
+        uncheckedCategories = [...(state.uncheckedCategories || [])];
+        hasUnsavedExport = state.hasUnsavedExport || false;
+        setListSearchQuery(state.listSearchQuery || '');
+        searchCollapsedCategories = new Set(state.searchCollapsedCategories || []);
+        newItemsUntilNextDraw = new Set(state.newItemsUntilNextDraw || []);
+        undoImportState = state.undoImportState || null;
+        categoriesToAnimate.clear(); categoriesToHighlight.clear(); itemsToHighlight.clear();
+        pickedItemIndex = -1; pickedCategory = ''; autoExpandedCategory = '';
+        document.getElementById('listSearchInput').value = listSearchQuery;
+        latestResultText = state.latestResultText || '';
+        resultHidden = state.resultHidden ?? true;
+        const result = document.getElementById('result');
+        // 确认后的清晰结果可恢复，不恢复切换前尚在滚动的临时候选。
+        result.textContent = state.confirmVisible === 'inline-block' ? latestResultText : '';
+        result.classList.toggle('hidden-result', resultHidden);
+        setDrawStage(state.confirmVisible === 'inline-block' ? 'result' : 'idle');
+        if (state.confirmVisible === 'inline-block') renderDrawReel(latestResultText);
+    }
+    function readSecondary(section) {
         try {
-            const raw = localStorage.getItem(sections[section].key);
-            if (!raw) return [];
-            const parsed = JSON.parse(raw);
-            if (!Array.isArray(parsed) || parsed.some(value => typeof value !== 'string')) {
-                throw new Error('Invalid list');
-            }
-            return parsed;
-        } catch (_) {
-            loadErrors[section] = '无法读取此清单。添加前请检查浏览器存储权限，或先备份原有数据。';
-            return [];
+            return FoodLists.load(section, localStorage);
+        } catch (error) {
+            sectionLoadErrors.set(section, '此清单读取或迁移失败，已保留原数据。请检查浏览器存储权限或先备份原数据。');
+            return { items: [], categoryOrder: [], collapsedCategories: [] };
         }
     }
-
-    function inTeaching() {
-        return document.body.classList.contains('teaching-mode');
+    function stopSlide() {
+        animation?.cancel(); ghostAnimation?.cancel();
+        animation = null; ghostAnimation = null;
+        ghost?.remove(); ghost = null;
     }
-
-    function announce(message) {
-        status.textContent = message;
+    function snapshot() {
+        const clone = content.cloneNode(true);
+        clone.classList.add('section-slide-ghost');
+        clone.dataset.section = activeSection;
+        clone.setAttribute('aria-hidden', 'true');
+        clone.inert = true;
+        [clone, ...clone.querySelectorAll('[id]')].forEach(element => element.removeAttribute('id'));
+        clone.querySelectorAll('button,input,textarea').forEach(element => { element.tabIndex = -1; });
+        return clone;
     }
-
-    function showError(message) {
-        error.textContent = message;
-        input.setAttribute('aria-invalid', message ? 'true' : 'false');
-    }
-
-    function commit(next, message, focusIndex, focusAction) {
-        if (inTeaching() || current === 'picker') return false;
-        if (loadErrors[current]) {
-            showError(loadErrors[current]);
-            return false;
-        }
-        try {
-            localStorage.setItem(sections[current].key, JSON.stringify(next));
-        } catch (_) {
-            showError('保存失败，清单未更改。请检查浏览器存储权限或可用空间后重试。');
-            return false;
-        }
-        lists[current] = next;
-        showError('');
-        render();
-        announce(message);
-        if (focusIndex !== undefined) {
-            const row = list.children[focusIndex];
-            const control = row?.querySelector(`[data-action="${focusAction || 'up'}"]:not(:disabled)`)
-                || row?.querySelector('button:not(:disabled)');
-            (control || input).focus();
-        }
-        return true;
-    }
-
-    function makeButton(text, action, label, disabled = false) {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.textContent = text;
-        button.dataset.action = action;
-        button.className = `light-list-${action}`;
-        button.setAttribute('aria-label', label);
-        button.title = label;
-        button.disabled = disabled;
-        return button;
-    }
-
-    function render() {
-        list.replaceChildren();
-        if (current === 'picker') return;
-        const items = lists[current];
-        count.textContent = `共 ${items.length} 项`;
-        if (!items.length) {
-            const empty = document.createElement('li');
-            empty.className = 'light-list-empty';
-            empty.textContent = current === 'wishlist' ? '还没有记下想吃的，先添加一个吧。' : '加餐清单还是空的，先记下喜欢的吧。';
-            list.appendChild(empty);
-            return;
-        }
-        items.forEach((name, index) => {
-            const row = document.createElement('li');
-            row.className = 'light-list-item';
-            row.dataset.index = String(index);
-            row.draggable = true;
-            const handle = makeButton('⠿', 'handle', `长按拖动：${name}；也可使用上移、下移按钮`);
-            const text = document.createElement('span');
-            text.className = 'light-list-name';
-            text.textContent = name;
-            const actions = document.createElement('span');
-            actions.className = 'light-list-actions';
-            actions.append(
-                makeButton('↑', 'up', `上移：${name}`, index === 0),
-                makeButton('↓', 'down', `下移：${name}`, index === items.length - 1),
-                makeButton('删除', 'delete', `删除：${name}`)
-            );
-            row.append(handle, text, actions);
-            list.appendChild(row);
-        });
-    }
-
-    // Public integration point: app.js calls this before entering teaching mode.
-    // Returns false for invalid sections or a section change during teaching.
-    window.switchSection = function switchSection(section) {
-        if (section !== 'picker' && !Object.hasOwn(sections, section)) return false;
-        if (inTeaching() && section !== current) return false;
-        if (section === current && nav.dataset.section === section) return true;
-        if (current !== 'picker') drafts[current] = input.value;
-        cancelDrag();
-        if (typeof window.cancelPick === 'function') window.cancelPick();
-        if (typeof window.closeItemPopover === 'function') window.closeItemPopover();
-        if (typeof window.cancelInlineEdit === 'function') window.cancelInlineEdit();
-        document.querySelectorAll('.menu-dropdown.open, .category-dropdown-menu.open')
-            .forEach(menu => menu.classList.remove('open'));
-        const focusWasInPanel = picker.contains(document.activeElement) || panel.contains(document.activeElement);
-        current = section;
+    window.refreshSectionHeading = function () {
+        document.getElementById('sectionTitle').textContent = definitions[activeSection].title;
+        document.getElementById('sectionDescription').textContent = definitions[activeSection].description;
+        document.getElementById('sectionStorageNote').textContent = sectionLoadErrors.get(activeSection)
+            || '当前清单独立保存在此浏览器；三个清单格式一致、记录互不混合，跨清单移动功能后续再加。';
+        document.getElementById('addBtn').disabled = sectionLoadErrors.has(activeSection) || isCategoryInputInvalid(document.getElementById('categoryInput'));
+    };
+    window.switchSection = function (section, options = {}) {
+        if (!Object.hasOwn(definitions, section)) return false;
+        if (document.body.classList.contains('teaching-mode') && section !== activeSection) return false;
+        if (section === activeSection) return true;
+        const direction = order.indexOf(section) > order.indexOf(activeSection) ? 1 : -1;
+        stopSlide();
+        const animate = options.animate !== false && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const outgoing = animate ? snapshot() : null;
+        cancelPick(); closeItemPopover(); cancelInlineEdit();
+        window.cancelListDrag?.();
+        sectionStates.set(activeSection, capture());
+        pendingImportData = null;
+        document.querySelectorAll('.menu-dropdown.open,.category-dropdown-menu.open,.settings-wrap.open').forEach(element => element.classList.remove('open'));
+        document.getElementById('categoryDropdownMenu')?.remove();
+        document.querySelectorAll('.center-modal.show').forEach(element => element.classList.remove('show'));
+        document.getElementById('exportReminder').classList.remove('show');
+        hideImportUndoPrompt();
+        activeSection = section;
+        if (!sectionStates.has(section)) sectionStates.set(section, readSecondary(section));
+        restore(sectionStates.get(section));
         nav.dataset.section = section;
         document.body.dataset.section = section;
-        picker.hidden = section !== 'picker';
-        panel.hidden = section === 'picker';
-        backupHint.hidden = section !== 'picker';
         buttons.forEach(button => {
             const active = button.dataset.section === section;
             button.classList.toggle('active', active);
             button.setAttribute('aria-pressed', String(active));
         });
-        if (section !== 'picker') {
-            title.textContent = sections[section].title;
-            description.textContent = sections[section].description;
-            input.placeholder = sections[section].placeholder;
-            input.value = drafts[section];
-            showError(loadErrors[section] || '');
-            render();
+        render(); updateExportStatus();
+        if (undoImportState) showImportUndoPrompt();
+        // 输入区 DOM、值、焦点均不改动；只为内容快照和新列表做左右平移。
+        if (animate && typeof content.animate === 'function') {
+            ghost = outgoing;
+            viewport.appendChild(ghost);
+            const timing = { duration: 260, easing: 'cubic-bezier(.22,.75,.25,1)' };
+            ghostAnimation = ghost.animate([{ transform: 'translateX(0)', opacity: 1 }, { transform: `translateX(${-direction * 52}px)`, opacity: 0 }], timing);
+            animation = content.animate([{ transform: `translateX(${direction * 52}px)`, opacity: 0 }, { transform: 'translateX(0)', opacity: 1 }], timing);
+            const current = animation;
+            animation.finished.then(() => { if (animation === current) stopSlide(); }).catch(() => {});
         }
-        announce('');
-        if (focusWasInPanel) buttons.find(button => button.dataset.section === section)?.focus();
         return true;
     };
-
-    buttons.forEach(button => button.addEventListener('click', () => window.switchSection(button.dataset.section)));
+    buttons.forEach(button => button.addEventListener('click', () => switchSection(button.dataset.section)));
     nav.addEventListener('keydown', event => {
-        if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key) || inTeaching()) return;
+        if (!['ArrowLeft','ArrowRight','Home','End'].includes(event.key) || document.body.classList.contains('teaching-mode')) return;
         const index = buttons.indexOf(document.activeElement);
         if (index < 0) return;
         event.preventDefault();
-        const next = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1
-            : (index + (event.key === 'ArrowRight' ? 1 : -1) + buttons.length) % buttons.length;
-        buttons[next].focus();
-        window.switchSection(buttons[next].dataset.section);
+        const next = event.key === 'Home' ? 0 : event.key === 'End' ? 2 : (index + (event.key === 'ArrowRight' ? 1 : -1) + 3) % 3;
+        buttons[next].focus(); switchSection(buttons[next].dataset.section);
     });
-
-    form.addEventListener('submit', event => {
-        event.preventDefault();
-        if (current === 'picker' || inTeaching()) return;
-        const data = window.FoodData;
-        if (!data || typeof data.normalizeName !== 'function' || typeof data.validateName !== 'function') {
-            showError('名称校验暂不可用，请刷新页面后重试。');
-            return;
-        }
-        const message = data.validateName(input.value);
-        const name = data.normalizeName(input.value);
-        if (message) {
-            showError(message);
-            input.focus();
-            return;
-        }
-        if (lists[current].includes(name)) {
-            showError('此清单已包含这个名称。');
-            input.focus();
-            return;
-        }
-        if (commit([...lists[current], name], `已添加：${name}`)) {
-            input.value = '';
-            drafts[current] = '';
-            input.focus();
-        }
-    });
-    input.addEventListener('input', () => showError(loadErrors[current] || ''));
-
-    list.addEventListener('click', event => {
-        if (Date.now() < skipClickUntil || inTeaching()) return;
-        const button = event.target.closest('button[data-action]');
-        const row = button?.closest('.light-list-item');
-        if (!row || current === 'picker' || drag || touch?.active) return;
-        const index = Number(row.dataset.index);
-        const next = lists[current].slice();
-        const name = next[index];
-        const action = button.dataset.action;
-        if (action === 'delete') {
-            next.splice(index, 1);
-            commit(next, `已删除：${name}`, Math.min(index, next.length - 1), 'delete');
-        } else if (action === 'up' || action === 'down') {
-            const target = index + (action === 'up' ? -1 : 1);
-            if (target < 0 || target >= next.length) return;
-            [next[index], next[target]] = [next[target], next[index]];
-            commit(next, `已将 ${name} 移至第 ${target + 1} 项`, target, action);
-        }
-    });
-
-    function clearMarkers() {
-        list.querySelectorAll('.light-insert-before, .light-insert-after').forEach(row => {
-            row.classList.remove('light-insert-before', 'light-insert-after');
-        });
-    }
-
-    function markTarget(x, y) {
-        clearMarkers();
-        if (!drag) return;
-        const element = document.elementFromPoint(x, y);
-        const row = element?.closest('.light-list-item');
-        drag.target = null;
-        if (!row || !list.contains(row) || Number(row.dataset.index) === drag.from) return;
-        const bounds = row.getBoundingClientRect();
-        drag.target = Number(row.dataset.index);
-        drag.after = y > bounds.top + bounds.height / 2;
-        row.classList.add(drag.after ? 'light-insert-after' : 'light-insert-before');
-    }
-
-    function applyDrop() {
-        if (!drag || drag.target === null || drag.section !== current || inTeaching()) return;
-        const next = lists[current].slice();
-        let target = drag.target + (drag.after ? 1 : 0);
-        if (target > drag.from) target--;
-        if (target === drag.from) return;
-        const [name] = next.splice(drag.from, 1);
-        next.splice(target, 0, name);
-        commit(next, `已将 ${name} 移至第 ${target + 1} 项`);
-    }
-
-    function cancelDrag() {
-        if (touch) {
-            clearTimeout(touch.timer);
-            if (touch.handle.hasPointerCapture?.(touch.id)) touch.handle.releasePointerCapture(touch.id);
-            touch = null;
-        }
-        cancelAnimationFrame(scrollFrame);
-        scrollFrame = 0;
-        clearMarkers();
-        list.querySelectorAll('.light-dragging').forEach(row => row.classList.remove('light-dragging'));
-        drag = null;
-    }
-
-    list.addEventListener('dragstart', event => {
-        const row = event.target.closest('.light-list-item');
-        if (!row || touch || inTeaching() || event.target.closest('button:not(.light-list-handle)')) {
-            event.preventDefault();
-            return;
-        }
-        drag = { from: Number(row.dataset.index), target: null, after: false, section: current };
-        row.classList.add('light-dragging');
-        event.dataTransfer.effectAllowed = 'move';
-        event.dataTransfer.setData('text/plain', row.dataset.index);
-    });
-    list.addEventListener('dragover', event => {
-        if (!drag) return;
-        event.preventDefault();
-        event.dataTransfer.dropEffect = 'move';
-        markTarget(event.clientX, event.clientY);
-    });
-    list.addEventListener('drop', event => {
-        if (!drag) return;
-        event.preventDefault();
-        markTarget(event.clientX, event.clientY);
-        applyDrop();
-        cancelDrag();
-    });
-    list.addEventListener('dragend', cancelDrag);
-
-    function autoScroll() {
-        if (!touch?.active) return;
-        const bounds = list.getBoundingClientRect();
-        const top = Math.max(0, bounds.top);
-        const bottom = Math.min(window.innerHeight, bounds.bottom);
-        const delta = touch.y < top + 44 ? -7 : touch.y > bottom - 44 ? 7 : 0;
-        if (delta) {
-            if (list.scrollHeight > list.clientHeight) list.scrollTop += delta;
-            else window.scrollBy(0, delta);
-            markTarget(touch.x, touch.y);
-        }
-        scrollFrame = requestAnimationFrame(autoScroll);
-    }
-
-    list.addEventListener('pointerdown', event => {
-        if (event.pointerType === 'mouse' || inTeaching()) return;
-        const handle = event.target.closest('.light-list-handle');
-        const row = handle?.closest('.light-list-item');
-        if (!row) return;
-        cancelDrag();
-        touch = { id: event.pointerId, handle, row, x: event.clientX, y: event.clientY,
-            startX: event.clientX, startY: event.clientY, active: false, timer: 0 };
-        touch.timer = setTimeout(() => {
-            if (!touch) return;
-            touch.active = true;
-            drag = { from: Number(row.dataset.index), target: null, after: false, section: current };
-            row.classList.add('light-dragging');
-            handle.setPointerCapture?.(event.pointerId);
-            announce('已开始拖动，移动到目标位置后松开；也可按 Escape 取消。');
-            scrollFrame = requestAnimationFrame(autoScroll);
-        }, 320);
-    });
-    document.addEventListener('pointermove', event => {
-        if (!touch || event.pointerId !== touch.id) return;
-        touch.x = event.clientX;
-        touch.y = event.clientY;
-        if (!touch.active) {
-            if (Math.hypot(touch.x - touch.startX, touch.y - touch.startY) > 10) cancelDrag();
-            return;
-        }
-        event.preventDefault();
-        markTarget(touch.x, touch.y);
-    }, { passive: false });
-    document.addEventListener('pointerup', event => {
-        if (!touch || event.pointerId !== touch.id) return;
-        if (touch.active) {
-            event.preventDefault();
-            skipClickUntil = Date.now() + 400;
-            markTarget(event.clientX, event.clientY);
-            applyDrop();
-        }
-        cancelDrag();
-    });
-    document.addEventListener('pointercancel', event => {
-        if (touch && event.pointerId === touch.id) cancelDrag();
-    });
-    list.addEventListener('contextmenu', event => {
-        if (event.target.closest('.light-list-handle')) event.preventDefault();
-    });
-    document.addEventListener('keydown', event => {
-        if (event.key === 'Escape' && (drag || touch)) {
-            cancelDrag();
-            announce('已取消拖动。');
-        }
-    });
-    window.addEventListener('blur', cancelDrag);
     window.addEventListener('storage', event => {
-        const section = Object.keys(sections).find(key => sections[key].key === event.key);
-        if (!section) return;
-        cancelDrag();
-        delete loadErrors[section];
-        lists[section] = load(section);
-        if (section === current) {
-            showError(loadErrors[section] || '');
-            render();
-            announce('已同步此浏览器中另一页面的清单。');
-        }
+        const section = Object.keys(FoodLists.keys).find(section => FoodLists.keys[section] === event.key);
+        if (!section || document.body.classList.contains('teaching-mode')) return;
+        sectionLoadErrors.delete(section);
+        const fresh = readSecondary(section);
+        sectionStates.set(section, fresh);
+        if (activeSection === section) { closeItemPopover(); cancelInlineEdit(); restore(fresh); render(); updateExportStatus(); }
     });
-
     document.body.dataset.section = 'picker';
+    sectionStates.set('picker', capture());
+    refreshSectionHeading();
 })();

@@ -17,6 +17,15 @@ const WEIGHT_OPTIONS = [
     { value: 'more', label: '更多出现' },
 ];
 const UNCATEGORIZED = '未分类';
+let activeSection = 'picker';
+const sectionStates = new Map();
+const sectionLoadErrors = new Map();
+function isPickerSection() { return activeSection === 'picker'; }
+function saveSecondaryState() {
+    if (isTeachingStorageActive()) return;
+    if (sectionLoadErrors.has(activeSection)) throw new Error(sectionLoadErrors.get(activeSection));
+    FoodLists.save(activeSection, { items, categoryOrder, collapsedCategories }, localStorage);
+}
 const LEGACY_STORAGE = (() => { try { return JSON.parse(localStorage.getItem(STORAGE_KEY))?.version !== 2; } catch { return true; } })();
 const migrateKey = item => LEGACY_STORAGE ? FoodData.upgradeItem(item) : item;
 
@@ -39,6 +48,7 @@ function isTeachingStorageActive() {
 // 写入 localStorage
 function saveItems(items) {
     if (isTeachingStorageActive()) return;
+    if (!isPickerSection()) { saveSecondaryState(); return; }
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ version: 2, items }));
 }
 
@@ -51,6 +61,7 @@ function loadCategoryOrder() {
 
 function saveCategoryOrder(order) {
     if (isTeachingStorageActive()) return;
+    if (!isPickerSection()) { saveSecondaryState(); return; }
     localStorage.setItem(CATEGORY_ORDER_KEY, JSON.stringify(order));
 }
 
@@ -63,6 +74,7 @@ function loadCollapsedCategories() {
 
 function saveCollapsedCategories(categories) {
     if (isTeachingStorageActive()) return;
+    if (!isPickerSection()) { saveSecondaryState(); return; }
     localStorage.setItem(COLLAPSED_CATEGORIES_KEY, JSON.stringify(categories));
 }
 
@@ -75,6 +87,7 @@ function loadUncheckedCategories() {
 
 function saveUncheckedCategories(categories) {
     if (isTeachingStorageActive()) return;
+    if (!isPickerSection()) { saveSecondaryState(); return; }
     localStorage.setItem(UNCHECKED_CATEGORIES_KEY, JSON.stringify(categories));
 }
 
@@ -88,6 +101,7 @@ function loadDrawHistory() {
 }
 
 function saveDrawHistory(history) {
+    if (!isPickerSection()) return;
     if (isTeachingStorageActive()) return;
     localStorage.setItem(DRAW_HISTORY_KEY, JSON.stringify(history));
 }
@@ -102,12 +116,13 @@ function loadPickCounts() {
 }
 
 function savePickCounts(counts) {
+    if (!isPickerSection()) return;
     if (isTeachingStorageActive()) return;
     localStorage.setItem(PICK_COUNTS_KEY, JSON.stringify(counts));
 }
 
 function incrementPickCount(item) {
-    if (!item || isTeachingStorageActive()) return;
+    if (!item || !isPickerSection() || isTeachingStorageActive()) return;
     pickCounts[item] = (pickCounts[item] || 0) + 1;
     savePickCounts(pickCounts);
     render();
@@ -123,6 +138,7 @@ function loadEatenCounts() {
 }
 
 function saveEatenCounts(counts) {
+    if (!isPickerSection()) return;
     if (isTeachingStorageActive()) return;
     localStorage.setItem(EATEN_COUNTS_KEY, JSON.stringify(counts));
 }
@@ -168,6 +184,7 @@ function loadDrawWeights() {
 }
 
 function saveDrawWeights(weights) {
+    if (!isPickerSection()) return;
     if (isTeachingStorageActive()) return;
     var cleaned = {};
     var keys = Object.keys(weights);
@@ -190,6 +207,7 @@ function loadDrawDurationSeconds() {
 }
 
 function saveDrawDurationSeconds(value) {
+    if (!isPickerSection()) return;
     if (isTeachingStorageActive()) return;
     localStorage.setItem(DRAW_DURATION_KEY, value.toFixed(1));
 }
@@ -366,6 +384,7 @@ function cleanupUncheckedCategories(categories) {
 }
 
 function isCategoryDrawEnabled(category) {
+    if (!isPickerSection()) return true;
     return !uncheckedCategories.includes(category);
 }
 
@@ -413,12 +432,12 @@ function openItemPopover(index, buttonEl) {
             + '</button>';
     }
 
-    popover.innerHTML = '<button class="item-popover-item" data-action="edit">\u7f16\u8f91</button>'
+    popover.innerHTML = '<button class="item-popover-item" data-action="edit">编辑</button>'
+        + '<button class="item-popover-item" data-action="up">上移</button>'
+        + '<button class="item-popover-item" data-action="down">下移</button>'
+        + (isPickerSection() ? '<span class="item-popover-divider"></span><span class="item-popover-label">抽出权重</span>' + weightHtml : '')
         + '<span class="item-popover-divider"></span>'
-        + '<span class="item-popover-label">\u62bd\u51fa\u6743\u91cd</span>'
-        + weightHtml
-        + '<span class="item-popover-divider"></span>'
-        + '<button class="item-popover-item item-popover-danger" data-action="delete">\u5220\u9664</button>';
+        + '<button class="item-popover-item item-popover-danger" data-action="delete">删除</button>';
 
     document.body.appendChild(popover);
 
@@ -440,6 +459,14 @@ function openItemPopover(index, buttonEl) {
         if (actionBtn) {
             var action = actionBtn.dataset.action;
             if (action === 'edit') { closeItemPopover(); startEdit(index); return; }
+            if (action === 'up' || action === 'down') {
+                const group = buildGroups().find(group => group.category === getItemCategory(items[index]));
+                const position = group.items.findIndex(entry => entry.index === index);
+                const target = group.items[position + (action === 'up' ? -1 : 1)];
+                closeItemPopover();
+                if (target && moveItemWithinCategory(index, target.index, action === 'down')) { render(); markListChanged(); }
+                return;
+            }
             if (action === 'delete') {
                 closeItemPopover();
                 cancelPick();
@@ -669,8 +696,9 @@ function collapseCategoryWithAnimation(category, afterCollapse) {
         afterCollapse();
         return;
     }
+    const section = activeSection;
     rows.forEach(row => row.classList.add('collapsing'));
-    setTimeout(afterCollapse, 160);
+    setTimeout(() => { if (section === activeSection) afterCollapse(); }, 160);
 }
 
 function toggleCategory(category) {
@@ -730,6 +758,11 @@ function collapseAutoExpandedCategory() {
 
 function clearResultMotion() {
     const resultEl = document.getElementById('result');
+    resultEl.querySelectorAll('.drawing-reel-track').forEach(track => {
+        const center = track.dataset.center;
+        track.getAnimations().forEach(animation => animation.cancel());
+        if (center && drawStage === 'result') renderDrawReel(center);
+    });
     resultEl.querySelectorAll('.result-exit').forEach(element => element.remove());
     const current = resultEl.querySelector('.result-text');
     if (current) {
@@ -743,6 +776,10 @@ function clearResultMotion() {
 function setResultText(text, shouldRoll = false, duration = 120, motion = {}) {
     latestResultText = text;
     const resultEl = document.getElementById('result');
+    if (motion.reel) {
+        renderDrawReel(text, shouldRoll ? duration : 0, motion);
+        return;
+    }
     const previousElement = resultEl.querySelector('.result-text');
     const previous = previousElement?.textContent;
     const previousAlreadyLeaving = previousElement?.classList.contains('rolling');
@@ -772,16 +809,128 @@ function setResultText(text, shouldRoll = false, duration = 120, motion = {}) {
     resultEl.appendChild(textEl);
 }
 
+let drawStage = 'idle';
+let idleReelTimer = null;
+let idleReelCenter = '';
+let idleReelNext = '';
+let idleReelPrevious = '';
+let idleReelSignature = '';
+
+function setDrawStage(stage) {
+    drawStage = stage;
+    const actions = document.getElementById('drawActions');
+    actions.dataset.state = stage;
+    document.getElementById('resultFrame').dataset.state = stage;
+    const split = stage === 'result';
+    const button = document.getElementById('pickBtn');
+    button.textContent = split ? '再来一次' : stage === 'drawing' ? '抽取中…' : '抽一个';
+    const confirm = document.getElementById('toggleResultBtn');
+    // 保留此内联状态供教学步骤和清单切换保存读取，视觉由父级状态控制。
+    confirm.style.display = split ? 'inline-block' : 'none';
+    confirm.tabIndex = split ? 0 : -1;
+    confirm.setAttribute('aria-hidden', String(!split));
+}
+
+function stopIdleReel() {
+    clearTimeout(idleReelTimer);
+    idleReelTimer = null;
+    document.querySelector('#result .idle-reel-track:not(.drawing-reel-track)')?.getAnimations().forEach(animation => animation.cancel());
+}
+
+function randomReelItem(candidates, exclude = []) {
+    if (!candidates.length) return '';
+    // 只抽展示索引，不调用正式抽取或统计；候选数组每次刷新时生成一次。
+    let choice = candidates[Math.floor(Math.random() * candidates.length)];
+    if (candidates.length > exclude.length) {
+        for (let retry = 0; retry < 6 && exclude.includes(choice); retry++) choice = candidates[Math.floor(Math.random() * candidates.length)];
+    }
+    if (exclude.includes(choice)) choice = candidates.find(item => !exclude.includes(item)) || candidates.find(item => item !== exclude[exclude.length - 1]) || choice;
+    return choice;
+}
+
+function renderDrawReel(center, duration = 0, motion = {}) {
+    const result = document.getElementById('result');
+    const candidates = getDrawableItems().map(entry => getItemDisplay(entry.item));
+    const currentTrack = result.querySelector('.idle-reel-track');
+    const previous = currentTrack?.dataset.center || currentTrack?.querySelector('[data-slot="0"]')?.textContent || center;
+    const previousAbove = currentTrack?.querySelector('[data-slot="-1"]')?.textContent || randomReelItem(candidates, [previous]);
+    const below = motion.nextText ?? randomReelItem(candidates, [previous, center]);
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const moving = duration > 0 && !reduced;
+    const track = document.createElement('div');
+    track.className = 'idle-reel-track drawing-reel-track';
+    track.dataset.center = center;
+    const texts = moving ? [previousAbove, previous, center, below] : [motion.previousText ?? (previous === center ? previousAbove : randomReelItem(candidates, [center])), center, motion.nextText ?? (previous === center ? currentTrack?.querySelector('[data-slot="1"]')?.textContent || below : below)];
+    texts.forEach((text, index) => {
+        const row = document.createElement('div');
+        row.className = 'idle-reel-row';
+        row.dataset.slot = String(index - (moving ? 2 : 1));
+        row.textContent = text;
+        row.title = text;
+        track.appendChild(row);
+    });
+    result.replaceChildren(track);
+    if (moving) {
+        track.animate([{ transform: 'translateY(0)' }, { transform: 'translateY(-40px)' }], {
+            duration, easing: motion.settle ? 'cubic-bezier(.15,.65,.3,1)' : 'linear', fill: 'forwards'
+        });
+    }
+}
+
+function refreshIdleReel(force = false, startText = '', neighbors = null) {
+    if (!isPickerSection() || drawStage !== 'idle' || document.hidden) { stopIdleReel(); return; }
+    const candidates = getDrawableItems().map(entry => getItemDisplay(entry.item));
+    const signature = JSON.stringify([activeSection, document.body.classList.contains('teaching-mode'), candidates]);
+    if (signature !== idleReelSignature) { idleReelSignature = signature; idleReelCenter = ''; force = true; }
+    const result = document.getElementById('result');
+    if (!force && idleReelTimer !== null && result.querySelector('.idle-reel-track')) return;
+    stopIdleReel();
+    resultHidden = false;
+    result.classList.remove('hidden-result');
+    if (!candidates.length) {
+        setResultText(items.length ? '请选择参与抽取的类别' : '先添加几个想吃的');
+        return;
+    }
+    idleReelCenter = candidates.includes(startText) ? startText : candidates.includes(idleReelCenter) ? idleReelCenter : randomReelItem(candidates);
+    idleReelPrevious = neighbors?.previous || randomReelItem(candidates, [idleReelCenter]);
+    idleReelNext = neighbors?.next || randomReelItem(candidates, [idleReelPrevious, idleReelCenter]);
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const paint = () => {
+        latestResultText = idleReelCenter;
+        const track = document.createElement('div');
+        track.className = 'idle-reel-track';
+        const afterNext = randomReelItem(candidates, [idleReelCenter, idleReelNext]);
+        [idleReelPrevious, idleReelCenter, idleReelNext, afterNext].forEach((text, index) => {
+            const row = document.createElement('div');
+            row.className = 'idle-reel-row';
+            row.dataset.slot = String(index - 1);
+            row.textContent = text;
+            row.title = text;
+            track.appendChild(row);
+        });
+        result.replaceChildren(track);
+        if (reduced || candidates.length === 1) return;
+        // 一次只移动一行。完成后丢掉最上行并补一个随机新项，中心位置无跳变。
+        track.animate([{ transform: 'translateY(0)' }, { transform: 'translateY(-40px)' }], { duration: 1800, easing: 'linear', fill: 'forwards' });
+        idleReelTimer = setTimeout(() => {
+            idleReelPrevious = idleReelCenter;
+            idleReelCenter = idleReelNext;
+            idleReelNext = afterNext;
+            paint();
+        }, 1800);
+    };
+    paint();
+}
+
 function showResultConfirm() {
+    stopIdleReel();
+    setDrawStage('result');
     const toggleBtn = document.getElementById('toggleResultBtn');
-    toggleBtn.textContent = '确定';
-    toggleBtn.style.display = 'inline-block';
     toggleBtn.disabled = document.body.classList.contains('teaching-mode') && teachingStep !== 6;
 }
 
 function hideResultConfirm() {
-    const toggleBtn = document.getElementById('toggleResultBtn');
-    toggleBtn.style.display = 'none';
+    setDrawStage('idle');
 }
 
 function clearPickHighlight() {
@@ -789,6 +938,13 @@ function clearPickHighlight() {
 }
 
 function toggleResult() {
+    const resumeFrom = drawStage === 'result' ? latestResultText : '';
+    const track = document.querySelector('#result .idle-reel-track');
+    const neighbors = resumeFrom && track ? {
+        previous: track.querySelector('[data-slot="-1"]')?.textContent,
+        next: track.querySelector('[data-slot="1"]')?.textContent
+    } : null;
+    stopIdleReel();
     resultHidden = true;
     const resultEl = document.getElementById('result');
     resultEl.textContent = '';
@@ -801,6 +957,7 @@ function toggleResult() {
         document.getElementById('teachingNextBtn')?.classList.add('teaching-highlight');
         updateTeachingNextState();
     }
+    refreshIdleReel(true, resumeFrom, neighbors);
 }
 
 function showExportReminder() {
@@ -906,7 +1063,7 @@ function downloadExportFile(filename) {
 }
 
 function exportListFile() {
-    downloadExportFile('what-to-eat-list.json');
+    downloadExportFile(activeSection + '-list.json');
     markListExported();
 }
 
@@ -985,8 +1142,10 @@ function resetImportDialogActions() {
 
 function handleImportFile(file) {
     if (!file) return;
+    const importSection = activeSection;
     const reader = new FileReader();
     reader.onload = () => {
+        if (activeSection !== importSection || isTeachingStorageActive()) { showToast('页面已切换，请在目标清单重新导入'); return; }
         try {
             openImportDialog(parseImportData(String(reader.result || '')));
         } catch (err) {
@@ -1192,7 +1351,8 @@ function collapseCategoriesWithAnimation(categories, afterCollapse) {
         return;
     }
     rows.forEach(row => row.classList.add('collapsing'));
-    setTimeout(afterCollapse, 160);
+    const section = activeSection;
+    setTimeout(() => { if (section === activeSection) afterCollapse(); }, 160);
 }
 
 function toggleAllCategories() {
@@ -1265,6 +1425,8 @@ function renameCategory(oldCategory, raw) {
 }
 
 function render() {
+    refreshIdleReel();
+    if (typeof window.refreshSectionHeading === 'function') window.refreshSectionHeading();
     const list = document.getElementById('list');
     const count = document.getElementById('count');
     const skipListAnimation = suppressNextListAnimation;
@@ -1310,8 +1472,8 @@ function render() {
 <li class="category${collapsed ? ' collapsed' : ''}${drawEnabled ? '' : ' draw-disabled'}${highlightCategories.has(group.category) ? ' import-highlight' : ''}${group.category === highlightPickedCat ? ' highlight' : ''}" draggable="true" data-category="${escapeAttribute(group.category)}">
   <span class="drag-handle" title="拖动调整分类顺序">⠿</span>
   <span class="category-arrow">${collapsed ? '▶' : '▼'}</span>
-  <span class="category-title">${escapeHtml(group.category)}<span class="pick-count">${getCategoryPickTotal(group.items) > 0 ? ` 抽中${getCategoryPickTotal(group.items)}次` : ''}</span></span>
-  <label class="category-draw-scope" title="是否纳入抽取范围">
+  <span class="category-title">${escapeHtml(group.category)}<span class="pick-count">${isPickerSection() && getCategoryPickTotal(group.items) > 0 ? ` 抽中${getCategoryPickTotal(group.items)}次` : ''}</span></span>
+  <label class="category-draw-scope picker-only" title="是否纳入抽取范围">
     <input class="category-draw-checkbox" type="checkbox" data-category="${escapeAttribute(group.category)}" ${drawEnabled ? 'checked' : ''}>
     <span>抽取</span>
   </label>
@@ -1323,7 +1485,7 @@ ${collapsed ? '' : group.items.map(({ item, index }) => {
         return `
 <li class="item-row${skipItemAnimation ? ' no-enter-animation' : ''}${drawEnabled ? '' : ' draw-disabled'}${highlightItems.has(item) ? ' import-highlight' : ''}${index === highlightPickedItem ? ' highlight' : ''}" draggable="true" data-index="${index}" data-category="${escapeAttribute(group.category)}">
   <span class="drag-handle item-drag-handle" title="拖动调整项目顺序">⠿</span>
-  <span class="item-text">${escapeHtml(getItemDisplay(item))}<span class="pick-count">${formatPickCount(item)}</span></span>
+  <span class="item-text">${escapeHtml(getItemNameInCategory(item, group.category))}${isPickerSection() ? `<span class="pick-count">${formatPickCount(item)}</span>` : ''}</span>
 	  <button class="item-more-btn" data-index="${index}" title="更多操作">⋯</button>
 </li>
       `; }).join('')}
@@ -1432,7 +1594,7 @@ function isCategoryInputInvalid(categoryInput) {
 
 function setCategoryInvalidState(categoryInput, invalid, flash = false) {
     const group = categoryInput.closest('.item-input-group');
-    const hint = group?.querySelector('.category-format-hint');
+    const hint = group?.querySelector('.category-format-hint') || categoryInput.closest('#sharedComposer')?.querySelector('.category-format-hint');
     const submitBtn = group?.parentElement?.querySelector('button.primary');
     group?.classList.toggle('category-format-invalid', invalid);
     categoryInput.classList.toggle('duplicate-warn', invalid && flash);
@@ -1516,6 +1678,7 @@ function addValueToItems(categoryInput, nameInput) {
 
 // 添加（含防重复）
 function addItem() {
+    if (sectionLoadErrors.has(activeSection)) { showToast(sectionLoadErrors.get(activeSection)); return; }
     addValueToItems(document.getElementById('categoryInput'), document.getElementById('itemInput'));
 }
 
@@ -1556,7 +1719,7 @@ function splitItemForEdit(item) {
 }
 
 function moveItemMetadata(oldItem, nextItem) {
-    if (oldItem === nextItem || isTeachingStorageActive()) return;
+    if (oldItem === nextItem || !isPickerSection() || isTeachingStorageActive()) return;
     for (const counts of [pickCounts, eatenCounts]) {
         if (Object.hasOwn(counts, oldItem)) {
             counts[nextItem] = (Number(counts[nextItem]) || 0) + (Number(counts[oldItem]) || 0);
@@ -1669,27 +1832,32 @@ function startEdit(index, shouldFocus = true) {
 let pickTimer = null;
 let pickGeneration = 0;
 function cancelPick() {
+    stopIdleReel();
+    const wasDrawing = drawStage === 'drawing';
     pickGeneration++;
     clearTimeout(pickTimer);
     pickTimer = null;
     clearResultMotion();
     const button = document.getElementById('pickBtn');
     button.disabled = false;
-    button.textContent = '抽一个';
+    if (wasDrawing) {
+        document.getElementById('result').replaceChildren();
+        latestResultText = '';
+        setDrawStage('idle');
+    } else setDrawStage(drawStage);
     if (document.body.classList.contains('teaching-mode')) updateTeachingInputLock();
 }
 
 // 按设置时长滚动抽取。
 function pick() {
+    if (!isPickerSection()) return;
     const resultEl = document.getElementById('result');
     const pickBtn = document.getElementById('pickBtn');
 
     const drawableItems = getDrawableItems();
     if (items.length === 0 || drawableItems.length === 0) {
-        resultHidden = false;
-        resultEl.classList.remove('hidden-result');
-        setResultText('⚠️ 列表为空');
         hideResultConfirm();
+        refreshIdleReel(true);
         return;
     }
 
@@ -1699,13 +1867,26 @@ function pick() {
         resultHidden = false;
         resultEl.classList.remove('hidden-result');
     }
-    hideResultConfirm();
+    stopIdleReel();
+    setDrawStage('drawing');
 
     const generation = ++pickGeneration;
-    const totalRolls = Math.max(6, Math.round(drawDurationSeconds * 14));
+    const totalRolls = Math.max(6, Math.round(drawDurationSeconds * 22));
     const drawDurationMs = drawDurationSeconds * 1000;
     let roll = 0;
     let lastIdx = -1;
+    // 先确定滚动队列，再显示下一个候选；已露出的下行不会在下一轮换字。
+    const sequence = [];
+    const visibleNext = resultEl.querySelector('.idle-reel-track [data-slot="1"]')?.textContent;
+    const first = drawableItems.find(entry => getItemDisplay(entry.item) === visibleNext);
+    for (let index = 0; index <= totalRolls; index++) {
+        let candidate = index === 0 && first ? first : weightedDrawablePick() || drawableItems[0];
+        let retries = 0;
+        while (index > 0 && drawableItems.length > 1 && candidate.index === sequence[index - 1].index && retries++ < 20) {
+            candidate = weightedDrawablePick() || drawableItems[0];
+        }
+        sequence.push(candidate);
+    }
 
     pickBtn.disabled = true;
     pickBtn.textContent = '抽取中…';
@@ -1715,19 +1896,14 @@ function pick() {
 
     function doRoll() {
         if (generation !== pickGeneration) return;
-        // 尽量不和上一轮重复，增强滚动感
-        let picked;
-        do {
-            picked = weightedDrawablePick();
-            if (!picked) { picked = drawableItems[0]; break; }
-        } while (picked.index === lastIdx && drawableItems.length > 1);
-
+        const picked = sequence[roll];
+        const nextText = getItemDisplay(sequence[roll + 1].item);
         lastIdx = picked.index;
         const progress = roll / Math.max(1, totalRolls - 1);
         roll++;
         if (roll >= totalRolls) {
             // 最终结果保持锐利，只有一次轻微过冲的停靠，不带速度残影。
-            setResultText(getItemDisplay(items[lastIdx]), true, 320, { settle: true, strength: 0 });
+            setResultText(getItemDisplay(items[lastIdx]), true, 160, { reel: true, settle: true, strength: 0, nextText });
             newItemsUntilNextDraw.clear();
             addDrawHistory(items[lastIdx]);
             var category = getItemCategory(items[lastIdx]);
@@ -1750,9 +1926,9 @@ function pick() {
         // 早期快速连续掠过，后段减速并减弱纵向残影；动画不超过本轮间隔。
         const delayProgress = roll / totalRolls;
         const averageDelay = drawDurationMs / Math.max(1, totalRolls - 1);
-        const delay = Math.max(20, averageDelay * (0.45 + delayProgress * 1.1));
+        const delay = Math.max(14, averageDelay * (0.45 + delayProgress * 1.1));
         const strength = Math.pow(1 - progress, 1.4);
-        setResultText(getItemDisplay(picked.item), true, delay, { strength });
+        setResultText(getItemDisplay(picked.item), true, delay, { reel: true, strength, nextText });
         pickTimer = setTimeout(doRoll, delay);
     }
 
@@ -2050,7 +2226,7 @@ function setTeachingStep(step) {
     if (step === 0) {
         kicker.textContent = '0';
         title.textContent = '欢迎进入教学页面';
-        desc.innerHTML = '这里演示“是啊吃什么”的分类抽取与列表管理，使用独立的教学列表，不影响你的真实记录。顶部另有“之后想吃”和“饭后加餐”两个无分类清单，退出教学后可以使用。点击下一步开始操作。';
+        desc.innerHTML = '三个页面共用上方输入区和纵向分类列表；这里演示“是啊吃什么”的分类抽取与列表管理，使用独立的教学列表，不影响你的真实记录。顶部另有“之后想吃”和“饭后加餐”两个分类清单，退出教学后可以使用。点击下一步开始操作。';
         nextBtn.textContent = '下一步';
         flashTeachingStepZeroCard();
         updateTeachingNextState();
@@ -2084,7 +2260,7 @@ function setTeachingStep(step) {
     if (step === 3) {
         kicker.textContent = '3';
         title.textContent = '添加到待抽列表';
-        desc.innerHTML = '点击 <strong>添加</strong>。项目会进入右侧待抽列表，并按照 <strong>一食</strong> 自动分类。到此你已经学会了添加一个带类别的项目。';
+        desc.innerHTML = '点击 <strong>添加</strong>。项目会进入下方记录列表，并按照 <strong>一食</strong> 自动分类。到此你已经学会了添加一个带类别的项目。';
         nextBtn.textContent = '下一步';
         if (isTeachingStepComplete()) {
             highlightTeachingCategory('一食');
@@ -2128,7 +2304,7 @@ function setTeachingStep(step) {
     if (step === 6) {
         kicker.textContent = '6';
         title.textContent = '确认结果';
-        desc.innerHTML = '抽取结果出来后，点击 <strong>确定</strong>，结果会和按钮一起消失。';
+        desc.innerHTML = '抽取结果会停在两侧小三角指向的位置，原按钮分成左侧“再来一次”和右侧“确定”。点击右侧 <strong>确定</strong>，按钮重新合并为“抽一个”，窗口恢复日常滚动展示。';
         nextBtn.textContent = '下一步';
         if (teachingStep === teachingLatestStep && !isTeachingStepComplete()) {
             document.getElementById('toggleResultBtn')?.classList.add('teaching-highlight');
@@ -2225,7 +2401,7 @@ function setTeachingStep(step) {
         const features = [
             { key: 'scope', label: '抽取范围', text: '每个分类右侧的勾选框表示是否参与抽取；取消勾选后，“是啊吃什么”不会抽到该分类。右上角的 <strong>全选</strong> 可以快速全选 / 全不选。' },
             { key: 'rename', label: '类别改名', text: '分类标题右侧的 <strong>改名</strong> 可以重命名整个分类。支持 1–20 个汉字、英文字母或数字，不含空格和符号，分类内项目会一起换到新类别。' },
-            { key: 'export', label: '导出备份', text: '列表整理好后，可以从右上角菜单导出JSON，之后需要迁移或备份时更安心。教学模式下这个入口是灰的，不会真的下载文件。' }
+            { key: 'export', label: '导出备份', text: '列表整理好后，可以从列表菜单导出JSON，之后需要迁移或备份时更安心。教学模式下这个入口是灰的，不会真的下载文件。' }
         ];
         kicker.textContent = '14';
         title.textContent = '列表管理功能';
@@ -2254,7 +2430,7 @@ function setTeachingStep(step) {
     closeTeachingMockImport();
     kicker.textContent = '16';
     title.textContent = '教学完成';
-    desc.innerHTML = '教学到这里就结束了。退出后，顶部“之后想吃”可以记录想去的店，“饭后加餐”可以记录路边摊、小吃；这两个独立清单只支持记录、删除和排序，不分大类、不参与抽取。中间“是啊吃什么”保留分类抽取功能。';
+    desc.innerHTML = '教学到这里就结束了。退出后，顶部“之后想吃”可以记录想去的店，“饭后加餐”可以记录路边摊、小吃；三个清单共用类别与名称输入框和分类列表，切换时输入内容保留。另两个清单支持分类、编辑、删除及排序，但不参与抽取。中间“是啊吃什么”保留分类抽取功能。';
     nextBtn.textContent = '完成';
     updateTeachingNextState();
 }
@@ -2330,6 +2506,7 @@ function transitionToHomeMode() {
 }
 
 function enterTeachingMode() {
+    switchSection('picker', { animate: false });
     cancelPick();
     closeItemPopover();
     savedMainState = {
@@ -2565,6 +2742,13 @@ function enableGuideAttention() {
 }
 
 // ===== 事件绑定 =====
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) stopIdleReel();
+    else refreshIdleReel(true);
+});
+window.matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change', () => {
+    if (drawStage === 'idle') refreshIdleReel(true);
+});
 const renameCategoryOverlay = document.getElementById('renameCategoryOverlay');
 FoodInput.bind(document.getElementById('renameCategoryInput'), 'category');
 document.getElementById('renameCategoryForm').addEventListener('submit', event => {
@@ -3013,6 +3197,12 @@ document.getElementById('drawScopeAllBtn').addEventListener('click', function (e
     }
 
     function resetDragState() {
+        if (touchDragState) {
+            clearTimeout(touchDragState.timer);
+            const target = touchDragState.target.element;
+            if (target.hasPointerCapture?.(touchDragState.pointerId)) target.releasePointerCapture(touchDragState.pointerId);
+            touchDragState = null;
+        }
         clearPressFeedback();
         list.querySelectorAll('li.drag-insert-before, li.drag-insert-after, li.touch-dragging').forEach(el => {
             el.classList.remove('drag-insert-before', 'drag-insert-after', 'touch-dragging');
@@ -3021,6 +3211,8 @@ document.getElementById('drawScopeAllBtn').addEventListener('click', function (e
         dragItemIndex = -1;
         dragItemCategory = '';
     }
+
+    window.cancelListDrag = resetDragState;
 
     function getDragTargetFromHandle(handle) {
         const categoryLi = handle.closest('li.category');

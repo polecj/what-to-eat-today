@@ -55,7 +55,17 @@ test('ordinary candidates move monotonically upward over the whole interval', ()
     assert.match(keyframes, /50%[\s\S]*translateY\(0\)/);
     assert.match(keyframes, /to\s*\{[\s\S]*translateY\(calc\(-1 \* var\(--roll-distance/);
     assert.doesNotMatch(keyframes, /translateY\(-3px\)/);
-    assert.match(source, /setResultText\(getItemDisplay\(picked.item\), true, delay, \{ strength \}\)/);
+    assert.match(source, /setResultText\(getItemDisplay\(picked.item\), true, delay, \{ reel: true, strength, nextText \}\)/);
+    assert.match(source, /reel: true, settle: true/);
+});
+test('display random selection avoids adjacent duplicates without using draw weights', () => {
+    const { context } = setup();
+    for (let index = 0; index < 30; index++) {
+        assert.equal(context.randomReelItem(['A', 'B'], ['A']), 'B');
+        assert.equal(context.randomReelItem(['A', 'B', 'C'], ['A', 'B']), 'C');
+        assert.equal(context.randomReelItem(['A'], ['A']), 'A');
+    }
+    assert.equal(context.randomReelItem([]), '');
 });
 test('reduced motion uses a single static text node', () => {
     const { result, context } = setup(true);
